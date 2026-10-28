@@ -139,7 +139,10 @@ ccflags-$(CONFIG_MTK_CMDQ_MBOX_EXT) += -I$(DEVICE_MODULES_PATH)/drivers/misc/med
 ccflags-y += -DNOT_SUPPORT_CABC_HW
 ccflags-y += -DDISP_MDP_COLOR_ON
 ccflags-y += -DCCORR_SUPPORT
-ccflags-y += -DESD_WRITE_KEY_SUPPORT
+# LieppOS C56: the GQ5012BF1 stock mediatek-drm.ko is built WITHOUT
+# ESD_WRITE_KEY_SUPPORT (no i_esd, no lcm_key_level_write, 4-entry ESD loop).
+# The F0 5A 5A key is a Samsung level-2 unlock unrelated to the VTDR6115.
+#ccflags-y += -DESD_WRITE_KEY_SUPPORT
 
 subdir-ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/include/
 subdir-ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/include/mt-plat/

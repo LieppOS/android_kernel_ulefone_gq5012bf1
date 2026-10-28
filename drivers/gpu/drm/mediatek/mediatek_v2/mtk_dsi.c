@@ -4788,7 +4788,12 @@ int mtk_dsi_esd_read(struct mtk_ddp_comp *comp, void *handle, void *ptr)
 #ifndef ESD_WRITE_KEY_SUPPORT
 	for (i = 0 ; i < ESD_CHECK_NUM ; i++) {
 #endif
+#ifdef ESD_WRITE_KEY_SUPPORT
 	if (params->lcm_esd_check_table[i_esd].cmd == 0) {
+#else
+	/* LieppOS C56: i_esd only exists with ESD_WRITE_KEY_SUPPORT */
+	if (params->lcm_esd_check_table[i].cmd == 0) {
+#endif
 #ifdef ESD_WRITE_KEY_SUPPORT
 		return 0;
 #else
@@ -4836,7 +4841,6 @@ int mtk_dsi_esd_cmp(struct mtk_ddp_comp *comp, void *handle, void *ptr)
 	struct esd_check_item *lcm_esd_tb;
 	struct mtk_panel_params *params;
 	struct mtk_drm_crtc *mtk_crtc = (struct mtk_drm_crtc *)ptr;
-	struct gpio_desc *err_flag_gpio = NULL;
 
 	if (dsi->ext && dsi->ext->params)
 		params = dsi->ext->params;
@@ -4886,21 +4890,14 @@ int mtk_dsi_esd_cmp(struct mtk_ddp_comp *comp, void *handle, void *ptr)
 			if (lcm_esd_tb->mask_list[j])
 				chk_val[j] = chk_val[j] & lcm_esd_tb->mask_list[j];
 			if (chk_val[j] == lcm_esd_tb->para_list[j]) {
-				DDPMSG("%s: expect[0x%x], read[0x%x]\n", __func__, lcm_esd_tb->para_list[j], chk_val[j]);
-				err_flag_gpio = devm_gpiod_get(dsi->dev, "err-flag", GPIOD_IN);
-				if (err_flag_gpio) {
-					ret = gpiod_get_value(err_flag_gpio);
-					devm_gpiod_put(dsi->dev, err_flag_gpio);
-					if (ret) {
-						DDPPR_ERR("[DSI]lcm, err_flag is pull high, esd is triggered\n");
-#ifdef ESD_WRITE_KEY_SUPPORT
-						i_esd = 0;
-#endif
-						return -1;
-					}
-				} else {
-					DDPPR_ERR("[DSI]lcm, err-flag-gpios is not found, just ignore it\n");
-				}
+				/*
+				 * LieppOS C56: stock has no err-flag probe here.  The
+				 * removed block called devm_gpiod_get("err-flag") on
+				 * every match; GQ5012BF1 has no err-flag-gpios, so it
+				 * got ERR_PTR(-ENOENT) (non-NULL), gpiod_get_value()
+				 * returned -ENOENT (non-zero) and every CORRECT read
+				 * was reported as an ESD failure.
+				 */
 				ret = 0;
 			} else {
 				DDPPR_ERR("[DSI]cmp fail:read(0x%x)!=expect(0x%x)\n",

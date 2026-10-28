@@ -2089,6 +2089,16 @@ static int mtk_mipi_tx_pll_dphy_config_mt6985(struct mtk_mipi_tx *mipi_tx)
 	return 0;
 }
 
+/*
+ * LieppOS C56: the GQ5012BF1 stock mediatek-drm.ko (MT6878, D-PHY) never
+ * programs RG_DSI_HSTX_LDO_REF_SEL in this path; it keeps the value set up by
+ * the bootloader.  This newer BSP revision forces 0x7 for every SoC sharing
+ * this function, which changes the HS-TX (pixel stream) output level on MT6878
+ * after every PLL re-prepare (each ESD recovery, resume).  Keep stock
+ * behaviour for MT6878 only; every other SoC is unchanged.
+ */
+static const struct mtk_mipitx_data mt6878_mipitx_data;
+
 static int mtk_mipi_tx_pll_dphy_config_mt6989(struct mtk_mipi_tx *mipi_tx)
 {
 	unsigned int txdiv, txdiv0, tmp;
@@ -2131,8 +2141,9 @@ static int mtk_mipi_tx_pll_dphy_config_mt6989(struct mtk_mipi_tx *mipi_tx)
 		mtk_mipi_tx_update_bits(mipi_tx, MIPITX_VOLTAGE_SEL_MT6983,
 			FLD_RG_DSI_PRD_REF_SEL, 0x4);
 
-	mtk_mipi_tx_update_bits(mipi_tx, MIPITX_VOLTAGE_SEL_MT6983,
-		FLD_RG_DSI_HSTX_LDO_REF_SEL, 0x7 << 6);
+	if (mipi_tx->driver_data != &mt6878_mipitx_data)
+		mtk_mipi_tx_update_bits(mipi_tx, MIPITX_VOLTAGE_SEL_MT6983,
+			FLD_RG_DSI_HSTX_LDO_REF_SEL, 0x7 << 6);
 #ifdef IF_ZERO
 	/* No need keep as default */
 	if (rate > 2000)
