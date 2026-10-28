@@ -64,8 +64,12 @@ BUILDS: list[tuple[str, str, list[str], dict[str, str]]] = [
     ("conninfra", "connectivity/conninfra", [], CONN_VARS),
     ("connfem", "connectivity/connfem", [], CONN_VARS),
     ("wlan-adaptor-connac2x", "connectivity/wlan/adaptor/build/connac2x", CONN_BASE[:2], CONN_VARS),
-    # wlan/core/gen4m is not built: mgmt/tkip_mic.c carries a no-redistribution
-    # notice and is excluded from the import.
+    # gen4m builds with the LieppOS-authored mgmt/tkip_mic.c (C50); the vendor
+    # file with a no-redistribution notice stays excluded from the import.
+    # DRIVER_BUILD_DATE matches KBUILD_BUILD_TIMESTAMP, as in the C29 recipe.
+    ("wlan-gen4m", "connectivity/wlan/core/gen4m", CONN_BASE,
+     dict(CONN_VARS, DRIVER_BUILD_DATE="20261025164711",
+          MODULE_NAME="wlan_drv_gen4m_6878", SEGMENT="SP")),
     ("bt-6878", "connectivity/bt/mt66xx/6878", CONN_BASE, CONN_VARS),
     ("gps-dl-v051", "connectivity/gps/data_link/plat/v051", CONN_BASE, CONN_VARS),
     ("gps-pwr", "connectivity/gps/gps_pwr", CONN_BASE, CONN_VARS),
@@ -133,11 +137,14 @@ def make_symvers(name: str, providers: list[str], ksyms: set[str]) -> str | None
 def modpost_kbuild_shim(rel: str) -> bool:
     """Linux 6.1 scripts/Makefile.modpost includes
     $(or $(wildcard $(src)/Kbuild), $(src)/Makefile) relative to the objtree.
-    For an M= directory inside srctree that has only a Kbuild file the wildcard
-    misses and modpost aborts on the absent Makefile.  Link the source Kbuild
-    into the output directory (build output only, never the source tree)."""
+    For an M= directory inside srctree the wildcard misses, so modpost either
+    aborts on an absent Makefile (fmradio/Build/connac2x) or includes the
+    Android-build Makefile instead of Kbuild (wlan/core/gen4m, whose Makefile
+    needs Makefile.include).  Kbuild takes precedence in kbuild, so link the
+    source Kbuild into the output directory whenever it exists (build output
+    only, never the source tree)."""
     src_dir = os.path.join(KERNEL, VENDOR, rel)
-    if os.path.exists(os.path.join(src_dir, "Makefile")) or not os.path.exists(os.path.join(src_dir, "Kbuild")):
+    if not os.path.exists(os.path.join(src_dir, "Kbuild")):
         return False
     od = out_path(rel)
     os.makedirs(od, exist_ok=True)

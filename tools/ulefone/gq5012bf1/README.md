@@ -107,12 +107,26 @@ the command line or in the output tree, never in the source:
 
 - `MTK_ISP_DRIVER_PATH` is overridden for `imgsensor`, whose Kbuild assumes
   `vendor/` is a sibling of `DEVICE_MODULES_PATH`.
-- For `M=` directories with only a `Kbuild` file (`fmradio/Build/connac2x`),
-  the source `Kbuild` is linked into `$OUT/<M>/`, because Linux 6.1
-  `scripts/Makefile.modpost` resolves `$(src)/Kbuild` relative to the objtree.
+- For `M=` directories with a `Kbuild` file, the source `Kbuild` is linked
+  into `$OUT/<M>/`, because Linux 6.1 `scripts/Makefile.modpost` resolves
+  `$(src)/Kbuild` relative to the objtree. Without it modpost aborts on a
+  missing `Makefile` (`fmradio/Build/connac2x`) or includes the Android-build
+  `Makefile` instead of `Kbuild` (`wlan/core/gen4m`).
 
-Not built: `wlan/core/gen4m` (its `mgmt/tkip_mic.c` carries a no-redistribution
-notice and is excluded from the snapshot).
+`wlan/core/gen4m` (`wlan_drv_gen4m_6878.ko`) builds with the LieppOS-authored
+`mgmt/tkip_mic.c` (C50, BSD-2-Clause, independent implementation of the TKIP
+Michael MIC receive check). The upstream file of that name carries a
+no-redistribution notice and stays excluded; `import-vendor-modules.py` records
+the replacement under `lieppos_authored` in `SOURCE-MANIFEST.json` and refuses
+to import if the upstream file is ever classified differently.
+
+Host tests for the MIC code (IEEE vectors from `crypto/testmgr.h`, differential
+comparison with `net/mac80211/michael.c`, frame-level accept/reject,
+malformed input under ASan/UBSan):
+
+```sh
+./tools/ulefone/gq5012bf1/tests/tkip_mic/run-tests.py --work-dir /path/outside/tree
+```
 
 `import-vendor-modules.py --source-root <dir>` regenerates the snapshot from
 the source-owning repositories (tracked files only, read-only Git queries) and
