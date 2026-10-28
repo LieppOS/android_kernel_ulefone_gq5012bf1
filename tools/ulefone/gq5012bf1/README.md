@@ -4,7 +4,49 @@ This directory is part of the published kernel repository. It builds the
 combined Android GKI 6.1.115 + MediaTek MT6878 + Ulefone GQ5012BF1 source that
 produced the C44/C45/C46 kernel and modules.
 
-## Inputs
+## C51C vibrator branch exception
+
+C51C changes only the regulator-vibrator module's control/lifetime implementation
+and adds its private state policy/tests/ABI documentation. The original C48/C50
+configuration and core exports are unchanged; ONESHOT remains disabled. **The new
+regulator-vibrator.ko is intentionally NOT byte-identical to C48.** Do not change
+reference hashes or suppress the original verifier's expected module mismatch.
+No C51C Image/full kernel/module-cohort rebuild is claimed.
+
+ABI: `Documentation/ABI/testing/sysfs-class-led-regulator-vibrator`. Stable
+`timeout_abi=1`, `max_duration_ms=5000`, atomic `duration_ms` and `last_error`
+replace the HAL's generic trigger sequence. This provisional software ceiling
+is not a thermal rating or permission to deploy. See the HAL research handoff.
+
+Reproduce focused tests (no hardware/kernel execution in the host state suite):
+
+```sh
+python3 -B tools/ulefone/gq5012bf1/tests/vibrator/run-tests.py
+python3 -B tools/ulefone/gq5012bf1/tests/vibrator/verify-module.py \
+  /authorized/c50-out/drivers/leds/regulator-vibrator.ko \
+  "$OUT/drivers/leds/regulator-vibrator.ko" /authorized/c50-out/vmlinux.symvers
+```
+
+Targeted build: copy the unchanged reference config into a **new owned OUT**;
+use Android clang17 r487747c, then run `make O="$OUT" ARCH=arm64 LLVM=1 LLVM_IAS=1
+DEVICE_MODULES_PATH="$PWD" MTK_PLATFORM=mt6878 -j2 olddefconfig modules_prepare`.
+Copy the authorized C50 `Module.symvers` to the new `$OUT/` (never rewrite the
+reference output). With that read-only prepared output, run the same make arguments
+plus `KBUILD_MIXED_TREE=/authorized/c50-out drivers/leds/regulator-vibrator.ko`.
+No private signing key, security bypass, new export or full Image is needed.
+
+Official compiler used: Android prebuilt commit
+`425c8149f17c8d9914bf690b4d5abe45a13fb993`, `clang-r487747c`; actual clang-17 SHA256
+`25617ca38946d0e7476025e6fa4c15fb386894b75d9372e63a9f3cec47988ce0`.
+C51C validated config SHA256 `40de208ba474abfac862ada26301d5a8b26490141e8c944ed303a3ccce8fd2fc`;
+new module SHA256 `039526f98cc1dc560f372f2104cb5e4bcafe0885359595dad96990e80e489f45`.
+Modpost succeeds; 32 import CRCs match C50 core, 13 common import CRCs and six
+existing callback KCFI preamble tags match baseline. No symbols are exported.
+These are scoped offline ABI checks, not module load or physical OFF proof.
+State tests: 12/12 normal, ASan/UBSan and TSan; four static source-order guards.
+Kernel runtime/KUnit/ARM64 device tests were NOT run. Deployment stays CLOSED.
+
+## Original C48 inputs and full-build recipe (historical baseline)
 
 | Input | Where |
 | --- | --- |

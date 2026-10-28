@@ -1,0 +1,71 @@
+What:           /sys/class/leds/<DT-label>/timeout_abi
+Date:           October 2026
+Contact:        LieppOS GQ5012BF1 maintainers
+Description:
+                Read-only value 1 identifies the driver-owned timeout ABI.
+                These attributes are installed in the LED's static group at
+                registration; they are not recreated by trigger selection.
+                The DT label and the regulator's voltage configuration are
+                unchanged. No particular GQ5012BF1 label is asserted here.
+
+What:           /sys/class/leds/<DT-label>/max_duration_ms
+Date:           October 2026
+Contact:        LieppOS GQ5012BF1 maintainers
+Description:
+                Read-only software ceiling, currently 5000 milliseconds.
+                This is a provisional software protection policy, NOT a
+                verified actuator thermal rating or deployment approval.
+
+What:           /sys/class/leds/<DT-label>/duration_ms
+Date:           October 2026
+Contact:        LieppOS GQ5012BF1 maintainers
+Description:
+                Write decimal 1..max_duration_ms for an atomic bounded request;
+                write 0 to cancel and acknowledge a recovered I/O fault.
+                Negative/overflow/out-of-range input is rejected without
+                replacing a previous request. The store detaches any existing
+                LED trigger before taking the request mutex. No periodic or
+                one-shot trigger is required or selected by this ABI.
+
+                A CLOCK_BOOTTIME hrtimer is armed before regulator activation.
+                Its callback queues kernel work; sleeping regulator operations
+                run only in thread context. Replacement serializes and cancels
+                the previous timer. Work checks the CURRENT absolute deadline,
+                so a stale queued expiry cannot cancel a newer request.
+                Last-request expiry does not depend on an open userspace fd,
+                thread, process, Binder client or destructor.
+
+                Read returns the requested remaining milliseconds (rounded up),
+                zero if cancelled/expired/faulted. It is NOT physical motion or
+                current feedback. Timer/workqueue scheduling is not hard realtime.
+
+                Failed OFF latches a fault, rejects new ON, and retries every
+                250ms while bound and running. Successful background cleanup
+                does not clear the latch; an explicit successful 0 does.
+                A blocked/suspended/stopping driver rejects positive requests.
+                Resume never restores a pre-suspend request. Suspend requires
+                checked OFF; failure aborts that suspend callback and retains
+                the fault/retry path. Legacy nonzero brightness requests also
+                get the finite software ceiling, not indefinite activation.
+
+                The guarantee assumes a running kernel and working regulator
+                operations on a dedicated controllable supply. Permanent PMIC
+                errors, another consumer holding the rail, kernel hangs or
+                forced device removal cannot be turned into physical OFF by
+                software. Such errors remain visible, not successful OFF.
+
+                Only the HAL's system UID/domain needs narrow duration_ms write
+                and metadata read access; trigger/invert/delay/shot permissions
+                are not required. No owner, mode or SELinux label is guessed or
+                changed by the driver. Production activation remains gated.
+
+What:           /sys/class/leds/<DT-label>/last_error
+Date:           October 2026
+Contact:        LieppOS GQ5012BF1 maintainers
+Description:
+                Read-only last negative errno, or zero. Reports asynchronous
+                OFF failures and regulator fault notifications. A successful
+                explicit OFF clears it; reading zero is not motion feedback.
+                A failed remove/shutdown OFF is logged critically; Linux driver
+                removal does not guarantee that returning an error prevents
+                unbind. Hardware-off proof therefore still requires validation.
