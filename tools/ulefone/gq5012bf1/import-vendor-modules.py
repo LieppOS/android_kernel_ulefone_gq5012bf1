@@ -189,6 +189,16 @@ LIEPPOS_AUTHORED = {
                         "tkipMicDecapsulate*() interface of include/mgmt/privacy.h; "
                         "C50, see docs C50-WIFI-SOURCE-IMPLEMENTATION"),
     },
+    # Licence notice referenced by the hostap-derived files under wpa_supp/ and
+    # include/wpa_supp/ ("See README for more details"), which the upstream
+    # snapshot does not carry. Verbatim hostap README at tag hostap_2_11
+    # (commit d945ddd368085f255e68328f2d3b020ceea359af), BSD-3-Clause.
+    ("connectivity", "wlan/core/gen4m/wpa_supp/README"): {
+        "replaces_exclusion": None,
+        "license": "BSD-3-Clause",
+        "origin": "UPSTREAM_VERBATIM hostap README @ hostap_2_11 d945ddd368085f255e68328f2d3b020ceea359af",
+        "description": "licence notice for the hostap-derived wpa_supp crypto files (C50 licence review)",
+    },
 }
 
 UNRESOLVED_REASONS = {
@@ -455,7 +465,12 @@ def main() -> int:
         authored = []
         for (name, rel), meta in sorted(LIEPPOS_AUTHORED.items()):
             reasons = {e["path"]: e["reason"] for e in report["components"][name]["exclusions"]}
-            if reasons.get(rel) != meta["replaces_exclusion"]:
+            imported = {e["path"] for e in report["components"][name]["files"]}
+            if rel in imported:
+                print(f"error: {name}/{rel}: upstream now provides this file; "
+                      "drop the LieppOS overlay", file=sys.stderr)
+                return 3
+            if meta["replaces_exclusion"] is not None and reasons.get(rel) != meta["replaces_exclusion"]:
                 print(f"error: {name}/{rel}: upstream file is not excluded as "
                       f"{meta['replaces_exclusion']}", file=sys.stderr)
                 return 3

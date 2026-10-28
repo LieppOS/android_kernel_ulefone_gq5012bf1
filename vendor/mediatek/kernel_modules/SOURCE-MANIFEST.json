@@ -21590,6 +21590,16 @@
    "replaces_exclusion": "restrictive",
    "sha256": "6ab264b99b103e795150ab8cb8a35b739efb47055861b3a0fde2e9302325f31e",
    "size": 10255
+  },
+  {
+   "component": "connectivity",
+   "description": "licence notice for the hostap-derived wpa_supp crypto files (C50 licence review)",
+   "license": "BSD-3-Clause",
+   "origin": "UPSTREAM_VERBATIM hostap README @ hostap_2_11 d945ddd368085f255e68328f2d3b020ceea359af",
+   "path": "wlan/core/gen4m/wpa_supp/README",
+   "replaces_exclusion": null,
+   "sha256": "f1b5992bbdd015c3ccb7faaadd62ef58ed821e15b9329bf2ceb27511ccc3f562",
+   "size": 2351
   }
  ],
  "schema": 1,
