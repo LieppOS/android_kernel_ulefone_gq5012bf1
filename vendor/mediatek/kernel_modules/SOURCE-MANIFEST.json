@@ -21580,6 +21580,18 @@
   }
  },
  "import_method": "tracked source snapshot; no upstream Git history is claimed",
+ "lieppos_authored": [
+  {
+   "component": "connectivity",
+   "description": "Independent TKIP Michael MIC receive verification (IEEE Std 802.11-2020 12.5.2.3) implementing the tkipMicDecapsulate*() interface of include/mgmt/privacy.h; C50, see docs C50-WIFI-SOURCE-IMPLEMENTATION",
+   "license": "BSD-2-Clause",
+   "origin": "INDEPENDENT",
+   "path": "wlan/core/gen4m/mgmt/tkip_mic.c",
+   "replaces_exclusion": "restrictive",
+   "sha256": "6ab264b99b103e795150ab8cb8a35b739efb47055861b3a0fde2e9302325f31e",
+   "size": 10255
+  }
+ ],
  "schema": 1,
  "source_root_label": "authorized external development workspace (path omitted)",
  "totals": {

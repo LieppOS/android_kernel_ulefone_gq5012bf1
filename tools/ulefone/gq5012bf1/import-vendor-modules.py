@@ -175,6 +175,22 @@ KNOWN_UNRESOLVED_LINKS = {
     ("connectivity", "gps/data_link/plat/v061_mt6653/gps_mcudl"): "OPTIONAL_COMPONENT",
     ("connectivity", "wlan/core/gen4m/ext"): "OPTIONAL_COMPONENT",
 }
+# LieppOS-authored files that replace upstream files excluded from the import.
+# They live in the kernel repository, are never copied from the source root,
+# and are recorded with their hash. The upstream counterpart must be excluded
+# for the stated reason, otherwise the import fails.
+LIEPPOS_AUTHORED = {
+    ("connectivity", "wlan/core/gen4m/mgmt/tkip_mic.c"): {
+        "replaces_exclusion": "restrictive",
+        "license": "BSD-2-Clause",
+        "origin": "INDEPENDENT",
+        "description": ("Independent TKIP Michael MIC receive verification "
+                        "(IEEE Std 802.11-2020 12.5.2.3) implementing the "
+                        "tkipMicDecapsulate*() interface of include/mgmt/privacy.h; "
+                        "C50, see docs C50-WIFI-SOURCE-IMPLEMENTATION"),
+    },
+}
+
 UNRESOLVED_REASONS = {
     "gps_mcudl": ("gps/gps_mcudl is only used by GPS data_link v060/v061 "
                   "(not MT6878, which builds v051) and embeds MCU firmware "
@@ -291,8 +307,11 @@ def main() -> int:
     if not os.path.isdir(os.path.join(kernel, ".git")):
         print(f"error: kernel repository not found: {kernel}", file=sys.stderr)
         return 2
-    if subprocess.run(["git", "-C", kernel, "status", "--porcelain", "--", dest_rel],
-                      capture_output=True, text=True).stdout.strip():
+    overlay = {f"{dest_rel}/{c}/{p}" for c, p in LIEPPOS_AUTHORED}
+    dirty = [line for line in subprocess.run(
+        ["git", "-C", kernel, "status", "--porcelain", "--", dest_rel],
+        capture_output=True, text=True).stdout.splitlines() if line[3:] not in overlay]
+    if dirty:
         print(f"error: {dest_rel} has uncommitted changes", file=sys.stderr)
         return 2
 
@@ -433,6 +452,21 @@ def main() -> int:
             print("error: unexpected dangling symlinks:\n  " + "\n  ".join(unexpected), file=sys.stderr)
             return 3
         report["unresolved_symlinks"] = unresolved
+        authored = []
+        for (name, rel), meta in sorted(LIEPPOS_AUTHORED.items()):
+            reasons = {e["path"]: e["reason"] for e in report["components"][name]["exclusions"]}
+            if reasons.get(rel) != meta["replaces_exclusion"]:
+                print(f"error: {name}/{rel}: upstream file is not excluded as "
+                      f"{meta['replaces_exclusion']}", file=sys.stderr)
+                return 3
+            dst = os.path.join(dest_root, name, rel)
+            if not os.path.isfile(dst) or os.path.islink(dst):
+                print(f"error: LieppOS-authored file missing: {name}/{rel}", file=sys.stderr)
+                return 3
+            data = read_bytes(dst)
+            authored.append(dict(meta, component=name, path=rel,
+                                 sha256=hashlib.sha256(data).hexdigest(), size=len(data)))
+        report["lieppos_authored"] = authored
         os.makedirs(dest_root, exist_ok=True)
         with open(os.path.join(dest_root, "SOURCE-MANIFEST.json"), "w") as fh:
             json.dump(report, fh, indent=1, sort_keys=True)
