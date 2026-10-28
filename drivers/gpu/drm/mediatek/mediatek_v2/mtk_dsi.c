@@ -4837,6 +4837,7 @@ int mtk_dsi_esd_cmp(struct mtk_ddp_comp *comp, void *handle, void *ptr)
 {
 	int i = 0, j, ret = 0;
 	u32 tmp0 = 0, tmp1 = 0, chk_val[4] = {0};
+	u32 raw0, raw1; /* LieppOS C56 diagnostic: unparsed RX words */
 	struct mtk_dsi *dsi = container_of(comp, struct mtk_dsi, ddp_comp);
 	struct esd_check_item *lcm_esd_tb;
 	struct mtk_panel_params *params;
@@ -4870,6 +4871,8 @@ int mtk_dsi_esd_cmp(struct mtk_ddp_comp *comp, void *handle, void *ptr)
 			tmp1 = readl(dsi->regs + DSI_RX_DATA1);
 		}
 		lcm_esd_tb = &params->lcm_esd_check_table[i];
+		raw0 = tmp0;
+		raw1 = tmp1;
 
 		if (((tmp0 & 0xff) == 0x1C) || ((tmp0 & 0xff) == 0x1A)) {
 			for (j = 0; j < lcm_esd_tb->count && j < 4; j++) {
@@ -4902,6 +4905,13 @@ int mtk_dsi_esd_cmp(struct mtk_ddp_comp *comp, void *handle, void *ptr)
 			} else {
 				DDPPR_ERR("[DSI]cmp fail:read(0x%x)!=expect(0x%x)\n",
 					  chk_val[j], lcm_esd_tb->para_list[j]);
+				/*
+				 * LieppOS C56 diagnostic (not stock): raw RX words.
+				 * 0/0 = nothing received; byte0 0x02 = ack/error
+				 * report; byte0 0x21 = genuine 1-byte DCS answer.
+				 */
+				DDPPR_ERR("[DSI]C56 esd raw rx0=0x%08x rx1=0x%08x slot=%d\n",
+					  raw0, raw1, i);
 				ret = -1;
 #ifdef ESD_WRITE_KEY_SUPPORT
 				i_esd = 0;
