@@ -1,0 +1,230 @@
+// SPDX-License-Identifier: (GPL-2.0 OR MIT)
+/*
+ * LieppOS - Ulefone Armor 29 Pro Thermal (GQ5012BF1)
+ * TRUSTED BOARD PROFILE
+ *
+ * Evidence classes:
+ *   [S] authenticated in an authorized stock module ELF (the 398-identity
+ *       stock module set); compatible strings and driver roles only
+ *   [P] authorized MT6878 platform reference device tree
+ *   [X] no independently permitted offline artefact; the value is not
+ *       invented and the affected hardware path stays disabled
+ *
+ * Campaign 16 recovered additional numeric board values from an offline
+ * stock vendor_boot FDT / DTBO copy.  That copy's provenance chain is still
+ * awaiting owner authorization.  Those values are preserved, classified and
+ * kept experimental in gq5012bf1-board-pending.dts; they are not present in
+ * this trusted profile.
+ *
+ * This is source work, not a deployment artefact.  Hardware validation is 0.
+ * Every path whose numeric wiring is [X] remains disabled.
+ */
+
+/dts-v1/;
+/plugin/;
+
+/* ---------------- display ------------------------------------------------
+ * The stock panel driver and its OF compatible are evidenced by
+ * panel-ky-vtdr6115-dphy-cmd.ko [S].  The panel reset/power GPIOs and
+ * timing data are [X], so the panel node stays disabled.
+ */
+&dsi0 {
+	status = "okay";
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	panel1@0 {
+		compatible = "hx,vtdr6115,cmd,120hz,ky";	/* [S] */
+		reg = <0>;
+		status = "disabled";				/* [X] wiring */
+	};
+};
+
+&mtkfb {
+	status = "okay";
+};
+
+&mtk_leds {
+	compatible = "mediatek,disp-leds";	/* [P] */
+
+	backlight {
+		led-mode = <4>;			/* [P] */
+	};
+};
+
+/* ---------------- touch --------------------------------------------------
+ * The stock controller binding is focaltech,fts [S].  The Ulefone bus, chip
+ * select and GPIO/IRQ assignment are [X]; the SPI node and child stay off.
+ * The reference I2C FT3519 node is explicitly disabled.
+ */
+&spi3 {
+	status = "disabled";			/* [X] bus assignment */
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	focaltech@0 {
+		compatible = "focaltech,fts";	/* [S] */
+		reg = <0>;
+		status = "disabled";		/* [X] wiring */
+	};
+};
+
+&i2c2 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	focaltech@38 {
+		status = "disabled";		/* wrong reference part/bus */
+	};
+};
+
+/* ---------------- fingerprint --------------------------------------------
+ * Stock stack: fingerprint.ko (YFT glue) + microarray_fp_tee.ko, binding
+ * mediatek,madev_finger [S].  Transport and secure-world wiring are [X].
+ * The reference Goodix node is explicitly disabled.
+ */
+&spi1 {
+	status = "disabled";			/* [X] transport */
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	gffingerprint@0 {
+		compatible = "mediatek,madev_finger";	/* [S] */
+		reg = <0>;
+		status = "disabled";			/* [X] wiring */
+	};
+};
+
+&goodix_fp {
+	status = "disabled";				/* wrong reference part */
+};
+
+/* ---------------- YFT providers ------------------------------------------
+ * Compatible strings [S].  The provider nodes stay disabled because their
+ * GPIO/transport values are [X] in the trusted evidence set.
+ */
+/ {
+	yft_finger: yft_finger {
+		compatible = "mediatek,yft_finger";	/* [S] */
+		status = "disabled";			/* [X] wiring */
+	};
+
+	yft_devices: yft_devices {
+		compatible = "mediatek,yft_devices";	/* [S] */
+		status = "disabled";			/* [X] wiring */
+	};
+
+	yft_tpd_gesture: yft_tpd_gesture {
+		compatible = "mediatek,yft_tpd";	/* [S] */
+		status = "disabled";			/* [X] wiring */
+	};
+
+	yft-gpio-keys {
+		compatible = "yft-gpio-keys";		/* [S] */
+		status = "disabled";			/* [X] GPIO map */
+	};
+
+	yft_tiny2c_usb: yft_tiny2c_usb {
+		compatible = "mediatek,yft_tiny2c_usb";	/* [S] */
+		status = "disabled";			/* [X] wiring */
+	};
+
+	yft_camplight: yft_camplight {
+		compatible = "mediatek,yft_camplight";	/* [S] */
+		status = "disabled";			/* [X] wiring */
+	};
+};
+
+/* ---------------- audio ---------------------------------------------------
+ * The stock speaker-amplifier binding is mediatek,speaker_amp [S], but its
+ * I2C bus address and GPIOs are provenance-pending.  Disable the reference
+ * AW882xx and the unused 0x5c amplifier instead of guessing a replacement.
+ */
+&i2c6 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	aw882xx_smartpa@34 {
+		status = "disabled";		/* wrong reference driver */
+	};
+
+	speaker-amp@5c {
+		status = "disabled";		/* not evidenced */
+	};
+
+	lm3644@63 {
+		status = "disabled";		/* camera flash pending */
+	};
+};
+
+/* ---------------- power / NFC / camera negative evidence -----------------
+ * These reference nodes are not supported by an authorized stock binding for
+ * GQ5012BF1.  Correct stock power/NFC/camera nodes are provenance-pending and
+ * stay out of this profile; nothing is replaced with an invented value.
+ */
+&i2c11 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "disabled";
+
+	sc8541@6a {
+		status = "disabled";		/* wrong reference part */
+	};
+
+	upm6720@65 {
+		status = "disabled";		/* wrong reference part */
+	};
+};
+
+&i2c4 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	sensor1@10 {
+		status = "disabled";		/* wrong reference camera */
+	};
+
+	mtk_camera_eeprom1@50 {
+		status = "disabled";		/* wrong reference camera */
+	};
+};
+
+&i2c8 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	camera-af-main@c {
+		status = "disabled";		/* wrong reference camera */
+	};
+
+	sensor0@1a {
+		status = "disabled";		/* wrong reference camera */
+	};
+
+	camera-eeprom0@50 {
+		status = "disabled";		/* wrong reference camera */
+	};
+};
+
+&i2c7 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	sensor2@36 {
+		status = "disabled";		/* wrong reference camera */
+	};
+};
+
+/*
+ * Deliberately absent from this trusted profile:
+ *   - panel reset/power GPIOs and panel timing;
+ *   - FT3680 SPI/GPIO assignment;
+ *   - fingerprint SPI/GPIO/TEE transport;
+ *   - YFT provider GPIO maps;
+ *   - speaker-amplifier bus address and GPIOs;
+ *   - stock SC8571/SC851X/WL2864C power children;
+ *   - stock four-sensor camera graph and flashlight;
+ *   - fuel gauge and NFC wiring.
+ * The Campaign 16 offline-copy values for these paths are retained in
+ * gq5012bf1-board-pending.dts and are classified PROVENANCE_PENDING.
+ */

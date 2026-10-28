@@ -1,0 +1,12 @@
+{
+ "schema": "lieppos.performance-target/1",
+ "id": "gq5012bf1-stock-compatible-gki",
+ "release": "6.1.115-android14-11-g945dff7bc1bf",
+ "kernel_commit": "6b18f0b574ab3267615ae6ce642d5a7c3c21ac09",
+ "config_sha256": "3e489f17463a268b0c8f4251d6f67aa07ded198040c36ae538997862e9e73634",
+ "kernel_symvers_sha256": "61933b61252e3311bd8c3bf2c179270ba21ae5bf99a4ece3b88d2e9d9dc1c548",
+ "compiler": "Android clang r487747c 17.0.2",
+ "profile": "generic-gki-frequency-uclamp-qos",
+ "native_vendor_scheduler": false,
+ "note": "Uses the authenticated GKI prepared target, not the prior vendor-config pilot. MTK nonlinear/VIP/GED/DRM services are not emulated. No hardware acceptance."
+}

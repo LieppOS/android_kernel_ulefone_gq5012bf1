@@ -1,0 +1,11 @@
+# C47 reference hashes for exact-match kernel artifacts.
+#
+# Paths are relative to the C44 reference `out/` directory. Module.symvers and
+# modules-only.symvers are checked separately in c47-reference-symvers.txt
+# because the public snapshot intentionally drops two Hynitron exports.
+# Panel and MMC are checked against the C45/C46 packaged artifacts because the
+# C44 reference `out/` predates those source fixes.
+
+kernel_image	arch/arm64/boot/Image	585080a838140a2c73c8caaae27c60ea6f360c926dc1b25ebc0e3a52c1f3a3d0
+kernel_vmlinux	vmlinux	f02a3711847ee0c101bc47606c31ce690a61decc54accdc59c54a71ec5ff2ce8
+kernel_system_map	System.map	721b3267e4cf5120f3482449ed634ef885770da74241a28f9ba1438c8da945e2

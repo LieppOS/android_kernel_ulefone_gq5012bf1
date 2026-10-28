@@ -1,0 +1,101 @@
+diff --git a/drivers/misc/mediatek/sched/eas/grp_awr.c b/drivers/misc/mediatek/sched/eas/grp_awr.c
+--- a/drivers/misc/mediatek/sched/eas/grp_awr.c
++++ b/drivers/misc/mediatek/sched/eas/grp_awr.c
+@@ -29,6 +29,8 @@
+ static int **margin_for_min_opp;
+ static DEFINE_MUTEX(ta_ctrl_mutex);
+ 
++#include "../../performance/lieppos14/integration/target-c/provider/mtk_perf_group_ratio_impl.inc"
++
+ void (*grp_awr_update_group_util_hook)(int nr_cpus,
+ 	int nr_grps, int **pcpu_pgrp_u, int **pger_pgrp_u,
+ 	int *pgrp_hint, int **pcpu_pgrp_marg, int **pcpu_pgrp_adpt_rto,
+@@ -233,8 +235,8 @@
+ 	if (grp_awr_init_finished == false)
+ 		return;
+ 	for_each_possible_cpu(cpu_idx) {
+-		pcpu_pgrp_act_rto_cap[cpu_idx][0] =
+-			get_gear_max_active_ratio_cap(map_cpu_ger[cpu_idx]);
++		mtk_group_ratio_cpu_set(cpu_idx, 0,
++			get_gear_max_active_ratio_cap(map_cpu_ger[cpu_idx]));
+ 		if (map_cpu_ger[cpu_idx] == tmp)
+ 			continue;
+ 		tmp = map_cpu_ger[cpu_idx];
+@@ -255,7 +257,7 @@
+ 				pcpu_pgrp_adpt_rto[cpu_idx][grp_idx] = SCHED_CAPACITY_SCALE;
+ 			} else {
+ 				pcpu_pgrp_adpt_rto[cpu_idx][grp_idx] =
+-					((pcpu_pgrp_act_rto_cap[cpu_idx][grp_idx]
++					((READ_ONCE(pcpu_pgrp_act_rto_cap[cpu_idx][grp_idx])
+ 					<< SCHED_CAPACITY_SHIFT)
+ 					/ pgrp_tar_act_rto_cap[grp_idx]);
+ 			}
+@@ -355,41 +357,27 @@
+ 
+ void set_cpu_group_active_ratio_pct(int cpu, int grp_idx, int val)
+ {
+-	if (grp_awr_init_finished == false)
+-		return;
+-	pcpu_pgrp_act_rto_cap[cpu][grp_idx] =
+-		((clamp_val(val, 1, 100) << SCHED_CAPACITY_SHIFT) / 100);
++	mtk_group_ratio_cpu_set(cpu, grp_idx,
++		(clamp_val(val, 1, 100) << SCHED_CAPACITY_SHIFT) / 100);
+ }
+ EXPORT_SYMBOL(set_cpu_group_active_ratio_pct);
+ 
+ void set_cpu_group_active_ratio_cap(int cpu, int grp_idx, int val)
+ {
+-	if (grp_awr_init_finished == false)
+-		return;
+-	pcpu_pgrp_act_rto_cap[cpu][grp_idx] = clamp_val(val, 1, SCHED_CAPACITY_SCALE);
++	mtk_group_ratio_cpu_set(cpu, grp_idx, clamp_val(val, 1, SCHED_CAPACITY_SCALE));
+ }
+ EXPORT_SYMBOL(set_cpu_group_active_ratio_cap);
+ 
+ void set_group_active_ratio_pct(int grp_idx, int val)
+ {
+-	int cpu_idx;
+-
+-	if (grp_awr_init_finished == false)
+-		return;
+-	for_each_possible_cpu(cpu_idx)
+-		pcpu_pgrp_act_rto_cap[cpu_idx][grp_idx] =
+-			((clamp_val(val, 1, 100) << SCHED_CAPACITY_SHIFT) / 100);
++	mtk_group_ratio_all_set(grp_idx,
++		(clamp_val(val, 1, 100) << SCHED_CAPACITY_SHIFT) / 100);
+ }
+ EXPORT_SYMBOL(set_group_active_ratio_pct);
+ 
+ void set_group_active_ratio_cap(int grp_idx, int val)
+ {
+-	int cpu_idx;
+-
+-	if (grp_awr_init_finished == false)
+-		return;
+-	for_each_possible_cpu(cpu_idx)
+-		pcpu_pgrp_act_rto_cap[cpu_idx][grp_idx] = clamp_val(val, 1, SCHED_CAPACITY_SCALE);
++	mtk_group_ratio_all_set(grp_idx, clamp_val(val, 1, SCHED_CAPACITY_SCALE));
+ }
+ EXPORT_SYMBOL(set_group_active_ratio_cap);
+ 
+diff --git a/drivers/misc/mediatek/sched/eas/grp_awr.h b/drivers/misc/mediatek/sched/eas/grp_awr.h
+--- a/drivers/misc/mediatek/sched/eas/grp_awr.h
++++ b/drivers/misc/mediatek/sched/eas/grp_awr.h
+@@ -20,6 +20,17 @@
+ extern void set_cpu_group_active_ratio_cap(int cpu, int grp_idx, int val);
+ extern void set_group_active_ratio_pct(int grp_idx, int val);
+ extern void set_group_active_ratio_cap(int grp_idx, int val);
++#if IS_ENABLED(CONFIG_MTK_PERF_CTRL_LEASE)
++/* Sleepable acquire/release; updates are IRQ-safe. Zero withdraws this owner's
++ * request; maximum of active owners wins. Last withdrawal restores baseline.
++ * Caller must join users before release and handle ordinary-writer revocation.
++ */
++struct mtk_group_ratio_lease;
++int mtk_group_ratio_acquire(int group, struct mtk_group_ratio_lease **out);
++int mtk_group_ratio_set(struct mtk_group_ratio_lease *lease, unsigned int cap);
++bool mtk_group_ratio_is_live(struct mtk_group_ratio_lease *lease);
++void mtk_group_ratio_release(struct mtk_group_ratio_lease *lease);
++#endif
+ extern void set_grp_awr_marg_ctrl(int val);
+ extern int get_grp_awr_marg_ctrl(void);
+ int  grp_awr_get_grp_tar_util(int grp_idx);

@@ -1,0 +1,46 @@
+diff --git a/drivers/misc/mediatek/sched/eas/eas_adpf.c b/drivers/misc/mediatek/sched/eas/eas_adpf.c
+--- a/drivers/misc/mediatek/sched/eas/eas_adpf.c
++++ b/drivers/misc/mediatek/sched/eas/eas_adpf.c
+@@ -15,6 +15,17 @@
+ #include "group.h"
+ #include "eas_adpf.h"
+ 
++#if IS_ENABLED(CONFIG_LIEPPOS_PERFORMANCE_TARGET_C)
++#include <linux/module.h>
++#include <linux/slab.h>
++#include <linux/workqueue.h>
++#include <linux/math64.h>
++#include <linux/jiffies.h>
++#include "grp_awr.h"
++#include "../sugov/mtk_perf_ctrl.h"
++#include "../../performance/lieppos14/public/drivers/misc/mediatek/performance/powerhal_cpu_ctrl/adpf_pid_identity.h"
++#include "../../performance/lieppos14/integration/target-c/provider/eas_adpf_owned_impl.inc"
++#else
+ #define ADPF_MAX_SESSION 64
+ 
+ static DEFINE_MUTEX(adpf_mutex);
+@@ -134,4 +145,5 @@
+ 	return eas_adpf_enable;
+ }
+ EXPORT_SYMBOL_GPL(get_eas_adpf_enable);
++#endif /* CONFIG_LIEPPOS_PERFORMANCE_TARGET_C */
+ 
+diff --git a/drivers/misc/mediatek/sched/eas/sched_main.c b/drivers/misc/mediatek/sched/eas/sched_main.c
+--- a/drivers/misc/mediatek/sched/eas/sched_main.c
++++ b/drivers/misc/mediatek/sched/eas/sched_main.c
+@@ -913,9 +913,15 @@
+ 
+ 	mtk_sched_trace_init();
+ 
++#if !IS_ENABLED(CONFIG_LIEPPOS_PERFORMANCE_TARGET_C)
+ 	ret = adpf_register_callback(sched_adpf_callback);
+ 	if (ret)
+ 		pr_info("register adpf_register_callback failed\n");
++#endif
++	/* Target C registers EAS from its source-owned adapter only AFTER this
++	 * native provider is fully LIVE, with SRCU join/reset on adapter rollback.
++	 * Never publish the new callback from a native module still in COMING.
++	 */
+ 
+ #if IS_ENABLED(CONFIG_MTK_CORE_PAUSE)
+ 	sched_pause_init();

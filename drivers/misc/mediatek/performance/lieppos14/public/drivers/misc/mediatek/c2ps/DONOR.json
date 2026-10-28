@@ -1,0 +1,109 @@
+{
+  "source_object": "nkm@2115d278396f",
+  "source_commit": "2115d278396fe63bd7d021e46091f3c44af64011",
+  "source_url": "https://github.com/NothingOSS/android_kernel_modules_nothing_mt6878 (alps-mp-u0.mp1-V9.9)",
+  "manifest_sha256": "8702fb26f7d7183b96bd88ea4796ecf559a1ae2c65400a00170aa8795f53a950",
+  "files": [
+    {
+      "path": "mtkcam/sched/c2ps/Kbuild",
+      "sha256": "ab6d30eed83c7a427047863414a108138f512aa4fe765de348c2a3d935c6d3f4",
+      "bytes": 1120
+    },
+    {
+      "path": "mtkcam/sched/c2ps/c2ps_main.c",
+      "sha256": "380577b32e64f8ced6209ef72e2da846ff2ce4042b90ea7d6606891fd728cddb",
+      "bytes": 18492
+    },
+    {
+      "path": "mtkcam/sched/c2ps/common/Kbuild",
+      "sha256": "ad7cd0c1d561f125786944dff3d90c14ffaf83b855acd89f0f0053a84d2c292f",
+      "bytes": 64
+    },
+    {
+      "path": "mtkcam/sched/c2ps/common/include/c2ps_common.h",
+      "sha256": "ee73e3b3fc32c3f1e20c625b313ce83420c2f08202a54a6604e5dda7cc3ea1bc",
+      "bytes": 7459
+    },
+    {
+      "path": "mtkcam/sched/c2ps/common/include/c2ps_sysfs.h",
+      "sha256": "452581594487a8ec6815b31f937c89142ba046b1efa83f8b115e9cbb138d1e5c",
+      "bytes": 1349
+    },
+    {
+      "path": "mtkcam/sched/c2ps/common/include/c2ps_trace_event.h",
+      "sha256": "544591dff1d9c847f792aa13d3ea1b6197c9e1368a147314ed61e633dc7ad7fc",
+      "bytes": 1443
+    },
+    {
+      "path": "mtkcam/sched/c2ps/common/include/c2ps_usedext.h",
+      "sha256": "c1decb4a2347c53f6f56eec16f4e346404b528413c848b923eab7bf76713239e",
+      "bytes": 1098
+    },
+    {
+      "path": "mtkcam/sched/c2ps/common/src/c2ps_common.c",
+      "sha256": "6d1f81fd916cb381517756fb303e3747db8d996a1ee47326dcff4aef9b00210e",
+      "bytes": 25341
+    },
+    {
+      "path": "mtkcam/sched/c2ps/common/src/c2ps_sysfs.c",
+      "sha256": "781cd5434cc364a0575f8b379c412fb6bdc491c73e059cecbce2e25de9a5eecf",
+      "bytes": 1726
+    },
+    {
+      "path": "mtkcam/sched/c2ps/monitor/Kbuild",
+      "sha256": "9d4e434134183e6501ca2887cd5f869d8af71031231977edae54f802c61e0f08",
+      "bytes": 46
+    },
+    {
+      "path": "mtkcam/sched/c2ps/monitor/include/c2ps_monitor.h",
+      "sha256": "1fdedd3dcfb2a95b657bb70bd786eed57d1793ddd533858e3810d758cfae08d0",
+      "bytes": 482
+    },
+    {
+      "path": "mtkcam/sched/c2ps/monitor/src/c2ps_monitor.c",
+      "sha256": "efe04d1b13ee6a4b9ca76d62605526caccf431f6ac45995cb79173a93b3bee5d",
+      "bytes": 5202
+    },
+    {
+      "path": "mtkcam/sched/c2ps/uclamp_regulator/Kbuild",
+      "sha256": "88e1fcd588240b8b4833971843570e8dd34b18ec62d1793c1a6e44e6f787d932",
+      "bytes": 96
+    },
+    {
+      "path": "mtkcam/sched/c2ps/uclamp_regulator/include/c2ps_regulator_policy.h",
+      "sha256": "f541b59331988eea2d24e9956ace90c81957d1072148f158a070795ee4211d57",
+      "bytes": 861
+    },
+    {
+      "path": "mtkcam/sched/c2ps/uclamp_regulator/include/c2ps_uclamp_regulator.h",
+      "sha256": "5f873888b21428c5353f80dd5719821645c266ed1361ca35ff105ebbb552ab9a",
+      "bytes": 569
+    },
+    {
+      "path": "mtkcam/sched/c2ps/uclamp_regulator/src/c2ps_regulator_policy.c",
+      "sha256": "9598a0475b49847eac4425d558c9e59d421970777ac6c83a3ee149b4c707ffe2",
+      "bytes": 9015
+    },
+    {
+      "path": "mtkcam/sched/c2ps/uclamp_regulator/src/c2ps_uclamp_regulator.c",
+      "sha256": "489f7e363c22b201766f97ec160d60af1e8d3eb3db7913e85fee964bebcd7948",
+      "bytes": 4995
+    },
+    {
+      "path": "mtkcam/sched/c2ps_ioctl/Kbuild",
+      "sha256": "e68ce11a16a72e4148b6f4bef8344b41dd931ace6a31de5f21137181e49aa7b7",
+      "bytes": 43
+    },
+    {
+      "path": "mtkcam/sched/c2ps_ioctl/c2ps_perf_ioctl.c",
+      "sha256": "da2f2a4beb35928c4ddf6e09ea95b92752507f3327f1e68ba7e4df1f287f7788",
+      "bytes": 6796
+    },
+    {
+      "path": "mtkcam/sched/c2ps_ioctl/c2ps_perf_ioctl.h",
+      "sha256": "5920827e4e5beebed554c99f40effa60890130df999e7116abd65ff6531d4442",
+      "bytes": 2567
+    }
+  ],
+  "target_kernel_commit": "1aa773e5feb354a36d0273da61c7fcf7873595c5"
+}

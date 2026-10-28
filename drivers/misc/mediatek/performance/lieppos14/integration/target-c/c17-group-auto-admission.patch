@@ -1,0 +1,20 @@
+--- a/drivers/misc/mediatek/sched/eas/group.c
++++ b/drivers/misc/mediatek/sched/eas/group.c
+@@ -260,7 +260,7 @@
+ 	if (READ_ONCE(gts->customized))
+ 		return;
+ 	groupid = cgrp_to_grpid(new);
+-	ret = __sched_set_grp_id(new, groupid);
++	ret = mtk_group_auto_set(new, groupid);
+ 	if (trace_sched_task_to_grp_enabled())
+ 		trace_sched_task_to_grp(new, groupid, ret, GP_trace);
+ }
+@@ -322,7 +322,7 @@
+ 		gts = &((struct mtk_task *)task->android_vendor_data1)->gp_task;
+ 		if (READ_ONCE(gts->customized))
+ 			continue;
+-		ret = __sched_set_grp_id(task, grp_id);
++		ret = mtk_group_auto_set(task, grp_id);
+ 		if (trace_sched_task_to_grp_enabled())
+ 			trace_sched_task_to_grp(task, grp_id, ret, GP_CGROUP);
+ 	}

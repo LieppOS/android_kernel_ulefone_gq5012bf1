@@ -1,0 +1,62 @@
+{
+  "kernel_commit": "f3f4cb91171896b13d40ad40290d641a0c350832",
+  "source_destination": "drivers/misc/mediatek/performance/lieppos14",
+  "files": {
+    "drivers/misc/mediatek/performance/Makefile": {
+      "base_sha256": "eb7a6360b15462985aa9bb38c88f4765d8221e0ce4d3bf5ad4c8fe4ad5f90212",
+      "patched_sha256": "82492e5724e41f5b5f90484b05b9ce73551259509ff2afda4f4b43adf5bc1c1c"
+    },
+    "drivers/misc/mediatek/performance/Kconfig": {
+      "base_sha256": "51cdbd396a89002eb74315d57809cc77134f5ff15e22e4017acd9bccc1e4db0a",
+      "patched_sha256": "ad0536e94b7cb1e4431732ea30fb5f8e78652ad4ae8b386edee3eee96c2b6d99"
+    }
+  },
+  "excluded_legacy_owner_rules": [
+    "obj-$(CONFIG_MTK_PERFORMANCE_MODULE) += mtk_perf_ioctl.o",
+    "obj-$(CONFIG_MTK_PERFORMANCE_MODULE) += mtk_ioctl_powerhal.o",
+    "obj-$(CONFIG_MTK_PERF_IOCTL_MAGT) += mtk_perf_ioctl_magt.o",
+    "obj-$(CONFIG_MTK_FPSGO_V3) += fpsgo_v3/",
+    "obj-$(CONFIG_MTK_PERFORMANCE_MODULE) += powerhal_cpu_ctrl/"
+  ],
+  "preserved": [
+    "mtk_ioctl_touch_boost",
+    "touch_boost/",
+    "frs/",
+    "game",
+    "load_track/",
+    "uload_ind/"
+  ],
+  "patch_sha256": "fa2564ed6780822425499a906ffe8d332b2c9980177b70a028fab80caeb4d1a3",
+  "kernel_compile": true,
+  "build_scope": "source-built dev20 relocatable core and focused 11-module performance/native-provider cohort, not a full 741-module rebuild or boot artifact",
+  "build_receipt": "/mnt/<reference-ssd>/lieppos-builds/codex-fpsgo-dev20-continuation/BUILD.json",
+  "native_adpf_contract_patch": "native-adpf-contract.patch",
+  "native_eas_shared_leases_complete": false,
+  "acceptance": "HOLD",
+  "canonical_applied": false,
+  "original_worktree_modified": false,
+  "implementation_commit": "8d22fceb803a30bbf289e1c021bdfa0ebe103dc1",
+  "previous_target_commit": "9fc51d25835e5eb7f43d38234768308299cd4ab2",
+  "verification_fragment": "performance.config",
+  "metadata_rule_checks": [
+    {
+      "selector": "unset",
+      "result": "PASS"
+    },
+    {
+      "selector": "n",
+      "result": "PASS"
+    },
+    {
+      "selector": "m",
+      "result": "PASS"
+    },
+    {
+      "selector": "y",
+      "result": "PASS"
+    }
+  ],
+  "observed_before_work": "771a4d4527fe1cb70bdbcdb1d0db5a0eb3653ad6",
+  "performance_api_delta_since_previous_pin": "none for 14 checked performance/scheduler/hook/module/core files from 9fc51 to f3f4cb91; three Codex patches remain unapplied to owner source. C20 owner reports dev20 baseline, not this patched Codex candidate",
+  "target_full_build_claimed": false
+}

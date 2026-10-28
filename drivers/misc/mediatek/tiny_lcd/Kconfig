@@ -1,0 +1,7 @@
+config MTK_TINY_LCD
+	tristate "MediaTek tiny LCD (CO5300) support (Ulefone GQ5012BF1)"
+	help
+	  SPI-attached CO5300 tiny LCD panel used on the Ulefone GQ5012BF1.
+	  Uses the YFT tinylcd device registry (yft_tinylcd_device_add/used).
+	  Source reconstructed by LieppOS from the stock vendor_dlkm module
+	  spi_tiny_co5300_lcd.ko.

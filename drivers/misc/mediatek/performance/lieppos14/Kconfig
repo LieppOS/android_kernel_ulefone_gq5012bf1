@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: GPL-2.0
+menuconfig LIEPPOS_PERFORMANCE
+	tristate "LieppOS MediaTek frame-performance framework (experimental)"
+	depends on ARM64 && CPU_FREQ && SMP && PROC_FS && SYSFS
+	depends on UCLAMP_TASK && ANDROID_VENDOR_HOOKS
+	depends on m
+	select MTK_FPSGO_V3
+	select MTK_PERFORMANCE_MODULE
+	help
+	  Build the authenticated MediaTek ioctl, PowerHAL/ADPF, FPSGO
+	  base/composer/FBT/FSTB/XGF/GBE and reconstructed private algorithms.
+	  Source-generated modversions and target-specific builds are required.
+	  Generic GKI uses frequency-proportional FBT, per-task util clamps and
+	  frequency QoS; it does not emulate MediaTek scheduler VIP/LS/group
+	  state, nonlinear OPP capacity, GED, DRM or DVFSRC hardware services.
+	  Enabling those requires the real matching platform providers.
+	  This source group is experimental/HOLD, not accepted for deployment.
+	  The framework and algorithm/service modules deliberately disallow unload
+	  until the donor's raw callback publications have complete rundown.
+
+# Existing donor Kbuild selectors. Do not include the donor's broad performance
+# menu here: its unrelated touch boost/load tracking profiles are not enabled.
+config MTK_FPSGO_V3
+	tristate
+
+config MTK_PERFORMANCE_MODULE
+	tristate

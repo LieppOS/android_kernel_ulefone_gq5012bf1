@@ -1,0 +1,7 @@
+config MTK_YFT_TINY2C_USB
+	tristate "YFT tiny-I2C USB accessory detector (Ulefone GQ5012BF1)"
+	depends on I2C
+	help
+	  YFT tiny-I2C USB accessory detection driver used on the Ulefone
+	  GQ5012BF1 (uses the yft_usb_flag registry). Source reconstructed by
+	  LieppOS from the stock vendor_dlkm module yft_tiny2c_usb.ko.

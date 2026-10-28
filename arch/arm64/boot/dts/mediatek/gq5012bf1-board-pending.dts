@@ -1,0 +1,575 @@
+// SPDX-License-Identifier: (GPL-2.0 OR MIT)
+/*
+ * LieppOS - Ulefone Armor 29 Pro Thermal (GQ5012BF1)
+ * PROVENANCE-PENDING EXPERIMENTAL BOARD OVERLAY
+ *
+ * Evidence classes:
+ *   [D] offline stock vendor_boot FDT / DTBO copy.  The values are retained
+ *       for offline comparison, but the copy's provenance chain requires
+ *       owner authorization.  These values are NOT trusted.
+ *   [S] authenticated in an authorized stock module ELF
+ *   [P] authorized MT6878 platform reference device tree
+ *   [X] no authorized offline artefact; value deliberately not invented
+ *
+ * This overlay is not the default trusted board profile.  It must not enter
+ * a boot-readiness package unless the provenance-pending values are
+ * explicitly authorized or independently re-derived.  Build it only with
+ * CONFIG_GQ5012BF1_PENDING_BOARD_DT=y or by naming the DTBO target directly.
+ *
+ * This is source work, not a deployment artefact.  Hardware validation is 0.
+ * Nodes whose driver behaviour is still unvalidated stay disabled even when
+ * their wiring is STOCK_CONFIRMED.
+ */
+
+/dts-v1/;
+/plugin/;
+
+/* ---------------- display -------------------------------------------------
+ * [D] panel1@0 is the stock vtdr6115 command panel.  The reference board
+ * overlay supplies the dsi0 graph and the correct reset/TE pinctrl.  The
+ * reference Samsung panel properties are replaced here.
+ */
+&dsi0 {
+	status = "okay";
+	#address-cells = <1>;
+	#size-cells = <0>;
+	switch-fps = <120>;
+
+	panel1@0 {
+		compatible = "hx,vtdr6115,cmd,120hz,ky";	/* [D] */
+		reg = <0>;
+		gate-ic = <0>;					/* [D] */
+		reset-gpios = <&pio 90 0>;			/* [D] */
+		powerdm-gpios = <&pio 194 0>;			/* [D] */
+		dvdd-gpios = <&pio 38 0>;			/* [D] */
+		vci-gpios = <&pio 39 0>;			/* [D] */
+		pinctrl-names = "default";
+
+		/*
+		 * The base overlay also carries vddi-en-gpios/vci-en-gpios for
+		 * its Samsung panel.  The vtdr6115 driver consumes reset-gpios,
+		 * dvdd-gpios and vci-gpios only; those are the [D] values above.
+		 */
+	};
+};
+
+&mtkfb {
+	status = "okay";
+};
+
+&dispsys_config {
+	status = "okay";
+};
+
+&mtk_leds {
+	compatible = "mediatek,disp-leds";	/* [P] */
+
+	backlight {
+		led-mode = <4>;			/* [P] */
+	};
+};
+
+/* ---------------- primary touch ------------------------------------------
+ * [D] The stock controller is FocalTech on SPI3, native CS0:
+ *     reset GPIO6, IRQ GPIO7, VDDI GPIO183, VDD from mt6369_vtp,
+ *     panel coordinates 1080x2400.
+ * The reference board's FT3519 I2C node is disabled: the stock module is the
+ * SPI FT3680 driver, not the I2C FT3519 driver.
+ */
+&i2c2 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	focaltech@38 {
+		status = "disabled";			/* [D] not this bus */
+	};
+};
+
+&spi3 {
+	status = "okay";				/* [D] */
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	focaltech@0 {
+		compatible = "focaltech,fts";		/* [D] */
+		reg = <0>;				/* [D] CS0 */
+		status = "disabled";			/* driver parity pending */
+		spi-max-frequency = <6000000>;		/* [D] */
+		interrupt-parent = <&pio>;
+		interrupts = <7 2 7 0>;			/* [D] */
+		vdd-supply = <&mt6369_vtp>;		/* [D] */
+		vddi-gpio = <&pio 183 0>;		/* [D] */
+		focaltech,reset-gpio = <&pio 6 0>;	/* [D] */
+		focaltech,irq-gpio = <&pio 7 0>;	/* [D] */
+		focaltech,max-touch-number = <10>;	/* [D] */
+		focaltech,display-coords = <0 0 1080 2400>; /* [D] */
+		lcminfo = <173>;			/* [D] */
+	};
+};
+
+/* ---------------- fingerprint -------------------------------------------
+ * [D] The stock fingerprint transport is SPI1 CS0 (GPIO61) with VFP supply.
+ * The reference goodix node is the same address/transport but the wrong
+ * binding, so its compatible is replaced in place.  Both the SPI child and
+ * the YFT platform node stay disabled until TEE/fingerprint is validated.
+ */
+&spi1 {
+	status = "okay";
+	#address-cells = <1>;
+	#size-cells = <0>;
+	cs-gpios = <&pio 61 0>;				/* [D] */
+
+	gffingerprint@0 {
+		compatible = "mediatek,madev_finger";	/* [D] */
+		reg = <0>;
+		spi-max-frequency = <8000000>;		/* [D] */
+		vfp-supply = <&mt6369_vfp>;		/* [D] */
+		status = "disabled";			/* secure-world pending */
+	};
+};
+
+&goodix_fp {
+	status = "disabled";				/* [D] not Goodix */
+};
+
+&{/} {
+	yft_finger: yft_finger {
+		compatible = "mediatek,yft_finger";	/* [D] */
+		pinctrl-names = "default",
+			"finger_reset_en0", "finger_reset_en1",
+			"finger_power_en0", "finger_power_en1",
+			"finger_spi0_mi_as_spi0_mi",
+			"finger_spi0_mi_as_gpio",
+			"finger_spi0_mo_as_spi0_mo",
+			"finger_spi0_mo_as_gpio",
+			"finger_spi0_clk_as_spi0_clk",
+			"finger_spi0_clk_as_gpio",
+			"finger_spi0_cs_as_spi0_cs",
+			"finger_spi0_cs_as_gpio",
+			"finger_eint_pull_down",
+			"finger_eint_pull_up",
+			"finger_eint_pull_dis";
+		pinctrl-0 = <&finger_pins_default>;
+		pinctrl-1 = <&finger_reset_en0>;
+		pinctrl-2 = <&finger_reset_en1>;
+		pinctrl-3 = <&finger_power_en0>;
+		pinctrl-4 = <&finger_power_en1>;
+		pinctrl-5 = <&finger_spi0_mi_as_spi0_mi>;
+		pinctrl-6 = <&finger_spi0_mi_as_gpio>;
+		pinctrl-7 = <&finger_spi0_mo_as_spi0_mo>;
+		pinctrl-8 = <&finger_spi0_mo_as_gpio>;
+		pinctrl-9 = <&finger_spi0_clk_as_spi0_clk>;
+		pinctrl-10 = <&finger_spi0_clk_as_gpio>;
+		pinctrl-11 = <&finger_spi0_cs_as_spi0_cs>;
+		pinctrl-12 = <&finger_spi0_cs_as_gpio>;
+		pinctrl-13 = <&finger_eint_pull_down>;
+		pinctrl-14 = <&finger_eint_pull_up>;
+		pinctrl-15 = <&finger_eint_pull_dis>;
+		reset-gpio = <&pio 30 0>;		/* [D] */
+		int-gpio = <&pio 3 0>;			/* [D] */
+		interrupt-parent = <&pio>;
+		interrupts = <3 1 3 0>;			/* [D] */
+		debounce = <3 0>;			/* [D] */
+		status = "disabled";			/* secure-world pending */
+	};
+};
+
+/* ---------------- YFT device information provider -----------------------
+ * [D] This provider has no dangerous hardware programming.  Its stock GPIO is
+ * GPIO186.  Enabling it lets the already-built consumers resolve their shared
+ * device metadata without inventing any board value.
+ */
+&{/} {
+	yft_devices: yft_device {
+		compatible = "mediatek,yft_devices";	/* [D] */
+		urxdo_gpio_select = <&pio 186 0>;	/* [D] */
+		status = "okay";
+	};
+
+	yft_tpd_gesture: yft_tpd_gesture {
+		compatible = "mediatek,yft_tpd";	/* [D] */
+		status = "okay";
+	};
+
+	yft-gpio-keys {
+		compatible = "yft-gpio-keys";		/* [D] */
+		status = "okay";
+
+		key-custom1 {
+			label = "customkeyf1";
+			linux,code = <59>;		/* KEY_F1 */
+			gpios = <&pio 13 1>;		/* [D] */
+			debounce-interval = <16>;	/* [D] */
+			wakeup-source;
+		};
+
+		key-custom2 {
+			label = "customkeyf2";
+			linux,code = <60>;		/* KEY_F2 */
+			gpios = <&pio 8 1>;		/* [D] */
+			debounce-interval = <16>;	/* [D] */
+			wakeup-source;
+		};
+	};
+
+	yft_tiny2c_usb: yft_tiny2c_usb {
+		compatible = "mediatek,yft_tiny2c_usb";	/* [D] */
+		tiny2c_usb_vdd_1v8 = <&pio 192 0>;	/* [D] */
+		tiny2c_usb_vdd_3v3 = <&pio 191 0>;	/* [D] */
+		tiny2c_usb_vddio_3v3 = <&pio 149 0>;	/* [D] */
+		status = "disabled";			/* USB-PD not validated */
+	};
+
+	yft_camplight: yft_camplight {
+		compatible = "mediatek,yft_camplight";	/* [D] */
+		ln2403-power-gpio = <&pio 74 0>;	/* [D] */
+		ln2403-en-gpio = <&pio 91 0>;		/* [D] */
+		leds-power-gpio = <&pio 153 0>;		/* [D] */
+		leds-red-gpio = <&pio 20 0>;		/* [D] */
+		leds-blue-gpio = <&pio 21 0>;		/* [D] */
+		pinctrl-names = "default", "ln2403_pwmoff_high",
+			"ln2403_pwmoff_low", "ln2403_pwmon";
+		pinctrl-0 = <&ln2403_default>;
+		pinctrl-1 = <&ln2403_high>;
+		pinctrl-2 = <&ln2403_low>;
+		pinctrl-3 = <&ln2403_pwm>;
+		status = "disabled";			/* camera flash pending */
+	};
+};
+
+/* ---------------- fingerprint / camera-light pin states ------------------ */
+&pio {
+	finger_pins_default: finger_pins_default {
+	};
+
+	finger_reset_en0: finger_reset_en0 {
+		pins_cmd_dat {
+			pinmux = <0x1e00>;
+			slew-rate = <1>;
+			output-low;
+		};
+	};
+
+	finger_reset_en1: finger_reset_en1 {
+		pins_cmd_dat {
+			pinmux = <0x1e00>;
+			slew-rate = <1>;
+			output-high;
+		};
+	};
+
+	finger_power_en0: finger_power_en0 {
+	};
+
+	finger_power_en1: finger_power_en1 {
+	};
+
+	finger_spi0_mi_as_spi0_mi: finger_spi0_mi_as_spi0_mi {
+		pins_cmd_dat {
+			pinmux = <0x3f02>;
+			slew-rate = <0>;
+			bias-disable;
+			output-low;
+			input-schmitt-enable = <0>;
+		};
+	};
+
+	finger_spi0_mi_as_gpio: finger_spi0_mi_as_gpio {
+		pins_cmd_dat {
+			pinmux = <0x3f00>;
+			slew-rate = <0>;
+			output-low;
+			input-schmitt-enable = <0>;
+		};
+	};
+
+	finger_spi0_mo_as_spi0_mo: finger_spi0_mo_as_spi0_mo {
+		pins_cmd_dat {
+			pinmux = <0x3e02>;
+			slew-rate = <1>;
+			bias-disable;
+			output-low;
+			input-schmitt-enable = <0>;
+		};
+	};
+
+	finger_spi0_mo_as_gpio: finger_spi0_mo_as_gpio {
+		pins_cmd_dat {
+			pinmux = <0x3e00>;
+			slew-rate = <1>;
+			output-low;
+			input-schmitt-enable = <0>;
+		};
+	};
+
+	finger_spi0_clk_as_spi0_clk: finger_spi0_clk_as_spi0_clk {
+		pins_cmd_dat {
+			pinmux = <0x3c02>;
+			slew-rate = <1>;
+			bias-disable;
+			output-low;
+			input-schmitt-enable = <0>;
+		};
+	};
+
+	finger_spi0_clk_as_gpio: finger_spi0_clk_as_gpio {
+		pins_cmd_dat {
+			pinmux = <0x3c00>;
+			slew-rate = <1>;
+			output-low;
+			input-schmitt-enable = <0>;
+		};
+	};
+
+	finger_spi0_cs_as_spi0_cs: finger_spi0_cs_as_spi0_cs {
+		pins_cmd_dat {
+			pinmux = <0x3d02>;
+			slew-rate = <1>;
+			bias-disable;
+			output-low;
+			input-schmitt-enable = <0>;
+		};
+	};
+
+	finger_spi0_cs_as_gpio: finger_spi0_cs_as_gpio {
+		pins_cmd_dat {
+			pinmux = <0x3d00>;
+			slew-rate = <1>;
+			output-low;
+			input-schmitt-enable = <0>;
+		};
+	};
+
+	finger_eint_pull_down: finger_eint_pull_down {
+		pins_cmd_dat {
+			pinmux = <0x0300>;
+			slew-rate = <0>;
+			bias-pull-down = <0>;
+		};
+	};
+
+	finger_eint_pull_up: finger_eint_pull_up {
+		pins_cmd_dat {
+			pinmux = <0x0300>;
+			slew-rate = <0>;
+			bias-pull-up = <0>;
+		};
+	};
+
+	finger_eint_pull_dis: finger_eint_pull_dis {
+		pins_cmd_dat {
+			pinmux = <0x0300>;
+			slew-rate = <0>;
+			bias-disable;
+		};
+	};
+
+	ln2403_default: ln2403_default {
+	};
+
+	ln2403_high: ln2403_high {
+		pins_cmd_dat {
+			pinmux = <0x1600>;
+			slew-rate = <1>;
+			output-high;
+		};
+	};
+
+	ln2403_low: ln2403_low {
+		pins_cmd_dat {
+			pinmux = <0x1600>;
+			slew-rate = <1>;
+			output-low;
+		};
+	};
+
+	ln2403_pwm: ln2403_pwm {
+		pins_cmd_dat {
+			pinmux = <0x1601>;
+			slew-rate = <1>;
+			output-high;
+		};
+	};
+};
+
+/* ---------------- audio provider repair ---------------------------------
+ * [D] The stock codec is mediatek,speaker_amp at i2c6/0x34.  The reference
+ * overlay put the AW882xx driver at the same address and linked it into the
+ * sound card.  Replace the binding in place so the existing sound-dai link
+ * resolves to the stock provider.  The reference rt5512 and audio switch are
+ * not present in the stock DT.
+ */
+&i2c6 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	aw882xx_smartpa@34 {
+		compatible = "mediatek,speaker_amp";	/* [D] */
+		#sound-dai-cells = <0>;
+		reset-gpio = <&pio 193 0>;		/* [D] */
+		irq-gpio = <&pio 41 0>;			/* [D] */
+		re-min = <1000>;			/* [D] */
+		re-max = <40000>;			/* [D] */
+		/* Stock DT omits sync-load; driver's no-property default is async. */
+		sync-load = <0>;
+		status = "okay";
+	};
+
+	speaker-amp@5c {
+		status = "disabled";			/* [D] not fitted */
+	};
+};
+
+&i2c3 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "disabled";				/* [D] unused bus */
+};
+
+&i2c0 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	ics_haptic@5f {
+		status = "disabled";			/* [D] not fitted */
+	};
+};
+
+/* ---------------- power / NFC evidence ----------------------------------
+ * [D] The stock power topology differs from the reference board:
+ *   i2c11: sc8571 master @0x66, wl2864c PMU @0x29
+ *   i2c6:  sc8571 slave @0x67, sc851x @0x69, st21nfc @0x08
+ * Tuning registers are deliberately omitted because these nodes remain
+ * disabled until the power path and fuel gauge are validated.  The reference
+ * sc8541/upm6720 nodes are disabled rather than silently trusted.
+ */
+&i2c11 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	/* All stock power devices are disabled below; do not leave the
+	 * reference 1 MHz bus running with no verified consumer.
+	 */
+	status = "disabled";
+
+	sc8541@6a {
+		status = "disabled";			/* [D] not fitted */
+	};
+
+	upm6720@65 {
+		status = "disabled";			/* [D] not fitted */
+	};
+
+	sc8571@66 {
+		compatible = "sc,sc8571-master";	/* [D] */
+		reg = <0x66>;
+		sc8571,intr_gpio = <&pio 4 2>;		/* [D] */
+		charger_name = "primary_dvchg";
+		status = "disabled";			/* power path pending */
+	};
+
+	wl2864c@29 {
+		compatible = "will,wl2864c_pmu";	/* [D] */
+		reg = <0x29>;
+		id_reg = <0>;
+		id_val = <1>;
+		id_reg_2868c = <0>;
+		id_val_2868c = <0x82>;
+		reset-gpios = <&pio 1 0>;		/* [D] */
+		status = "disabled";			/* regulator pending */
+	};
+};
+
+&i2c6 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	sc8571@67 {
+		compatible = "sc,sc8571-slave";		/* [D] */
+		reg = <0x67>;
+		sc8571,intr_gpio = <&pio 18 2>;		/* [D] */
+		charger_name = "secondary_dvchg";
+		status = "disabled";			/* power path pending */
+	};
+
+	sc851x@69 {
+		compatible = "sc,sc8510";		/* [D] */
+		reg = <0x69>;
+		sc,sc851x,irq-gpio = <&pio 12 2>;	/* [D] */
+		status = "disabled";			/* power path pending */
+	};
+
+	st21nfc@8 {
+		compatible = "st,st21nfc";		/* [D] */
+		reg = <0x08>;
+		interrupt-parent = <&pio>;
+		interrupts = <2 0>;			/* [D] */
+		reset-gpios = <&pio 40 0>;		/* [D] */
+		irq-gpios = <&pio 2 0>;			/* [D] */
+		clkreq-gpios = <&pio 151 0>;		/* [D] */
+		status = "disabled";			/* NFC pending */
+	};
+};
+
+/* ---------------- reference camera nodes --------------------------------
+ * [D] The stock camera topology has four sensors with different addresses and
+ * bus assignments.  The reference board's three sensor nodes are therefore
+ * disabled instead of being allowed to probe the wrong parts.  The actual
+ * stock camera nodes and their power sequencing are staged as offline
+ * evidence; camera activation remains blocked on hardware validation.
+ */
+&i2c4 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	sensor1@10 {
+		status = "disabled";
+	};
+
+	mtk_camera_eeprom1@50 {
+		status = "disabled";
+	};
+};
+
+&i2c8 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	camera-af-main@c {
+		status = "disabled";
+	};
+
+	sensor0@1a {
+		status = "disabled";
+	};
+
+	camera-eeprom0@50 {
+		status = "disabled";
+	};
+};
+
+&i2c7 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	sensor2@36 {
+		status = "disabled";
+	};
+};
+
+&i2c6 {
+	lm3644@63 {
+		compatible = "mediatek,aw36515";	/* [D] same address */
+		flash-externel = <&pio 116 0>;		/* [D] */
+		#cooling-cells = <2>;
+		status = "disabled";			/* camera flash pending */
+	};
+};
+
+/*
+ * Still disabled / not yet described:
+ *   sh366003 fuel gauge [D] (bus mapping not yet reconciled)
+ *   stock four-sensor camera graph [D]
+ *   full sc8571/sc851x tuning tables [D]
+ *   secure-world fingerprint/TEE activation [D]
+ * These are not replaced with invented values.
+ */

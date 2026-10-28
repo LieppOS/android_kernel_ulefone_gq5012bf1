@@ -1,0 +1,6 @@
+0xc8552def	mtk_ccu_get_pdev	../mtkcam/ccusys/mtk_ccuv	EXPORT_SYMBOL_GPL	
+0x10319f1f	mtk_ccu_da_to_va	../mtkcam/ccusys/mtk_ccuv	EXPORT_SYMBOL_GPL	
+0x8b6ea8aa	mtk_ccu_ipc_register	../mtkcam/ccusys/mtk_ccuv	EXPORT_SYMBOL_GPL	
+0x4ffaebac	mtk_ccu_ipc_unregister	../mtkcam/ccusys/mtk_ccuv	EXPORT_SYMBOL_GPL	
+0x8b2fd6a7	mtk_ccu_rproc_ipc_send	../mtkcam/ccusys/mtk_ccuv	EXPORT_SYMBOL_GPL	
+0xaf999e70	mtk_ccu_rproc_get_inforeg	../mtkcam/ccusys/mtk_ccuv	EXPORT_SYMBOL_GPL	

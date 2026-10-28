@@ -1,0 +1,29 @@
+diff --git a/drivers/misc/mediatek/sched/eas/eas_adpf.h b/drivers/misc/mediatek/sched/eas/eas_adpf.h
+--- a/drivers/misc/mediatek/sched/eas/eas_adpf.h
++++ b/drivers/misc/mediatek/sched/eas/eas_adpf.h
+@@ -4,6 +4,18 @@
+  */
+ #ifndef _EAS_ADPF_H
+ #define _EAS_ADPF_H
++
++#if IS_ENABLED(CONFIG_LIEPPOS_PERFORMANCE_TARGET_C)
++/* One kernel callback type/layout, including retained creator/app identities.
++ * The independent legacy copy is not compatible with the owned provider.
++ */
++#include "../../performance/lieppos14/public/drivers/misc/mediatek/performance/powerhal_cpu_ctrl/powerhal_cpu_ctrl.h"
++extern int sched_adpf_callback(struct _SESSION *session);
++extern void set_group_active_ratio_cap(int gear_id, int val);
++extern void set_eas_adpf_enable(int val);
++extern int get_eas_adpf_enable(void);
++extern void eas_adpf_release_sessions(void);
++#else
+ 
+ #define ADPF_MAX_THREAD    32
+ #define SESSION_UNUSED     0
+@@ -52,5 +64,6 @@
+ extern void set_group_active_ratio_cap(int gear_id, int val);
+ extern void set_eas_adpf_enable(int val);
+ extern int get_eas_adpf_enable(void);
++#endif /* CONFIG_LIEPPOS_PERFORMANCE_TARGET_C */
+ #endif
+ 

@@ -1,0 +1,34 @@
+config MTK_FINGERPRINT
+	tristate "Mediatek Fingerprint"
+	default y
+	help
+	Fingerprint mtk driver enable/disable in the kernel.
+	Say Y here if you want to use mediatek fingerprint driver,
+	fingerprint driver will support fingerprint function in REE,
+	it supports Goodix's
+
+config GOODIX_FINGERPRINT
+	tristate "generic goodix fingerprint driver"
+	default y
+	help
+	add support for goodix fingerprint driver.
+
+source "$(KCONFIG_EXT_PREFIX)drivers/input/fingerprint/goodix/Kconfig"
+
+
+config YFT_FINGERPRINT
+	tristate "YFT fingerprint pinctrl/power glue"
+	depends on OF
+	help
+	  YFT fingerprint GPIO, pinctrl and power sequencing glue used by the
+	  MicroArray fingerprint driver on MT6878 devices.  Exports the
+	  yft_finger_* helper API consumed by the sensor driver.
+
+config MICROARRAY_FP_TEE
+	tristate "MicroArray fingerprint sensor over TrustKernel TEE"
+	depends on SPI
+	select YFT_FINGERPRINT if OF
+	help
+	  MicroArray v4.0.06 fingerprint sensor driver.  SPI transfers are
+	  routed through the TrustKernel tee_spi_transfer() proxy; power,
+	  reset and IRQ lines are handled by the YFT glue.

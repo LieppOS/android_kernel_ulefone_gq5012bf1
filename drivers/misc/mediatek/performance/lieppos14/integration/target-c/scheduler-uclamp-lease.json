@@ -1,0 +1,28 @@
+{
+  "kernel_commit": "f3f4cb91171896b13d40ad40290d641a0c350832",
+  "modified_files": {
+    "kernel/sched/core.c": {
+      "base_sha256": "d27614d8e93bddbee49aae5fce46d245b10b2a1bc9389293e5f94666e5b92fa6",
+      "patched_sha256": "d33edde9d1c69817308cfb5eeb54e4e343fbd4b24a58559f09542f702d5c6682"
+    }
+  },
+  "new_files": {
+    "kernel/sched/uclamp_lease.inc": "7a024635dd934ec330fb35af230f0d2ed2d911c15b54bb55a6104bdbab3265e7",
+    "include/linux/sched/uclamp_lease.h": "7c3c84084f558436631e283cef54b53c50902fbd81c1a44be18882123517b85d"
+  },
+  "patch_sha256": "78792f84ab0cc8157e3337cb14fe72b57602b4de3ad91834fd7c0a1163d4ff0b",
+  "exports": [
+    "sched_uclamp_lease_acquire",
+    "sched_uclamp_lease_apply",
+    "sched_uclamp_lease_is_live",
+    "sched_uclamp_lease_release"
+  ],
+  "contract": "task-ref registry; baseline on first apply; all ordinary sched_setattr writes preempt under pi/rq locks after rejection paths; clamp-only queue/accounting transaction",
+  "native_compile": true,
+  "native_build_scope": "full dev20 relocatable vmlinux.o from source, four new natural genksyms exports; existing core export CRCs unchanged; explicit strict modpost; no boot artifact or runtime proof",
+  "build_receipt": "/mnt/<reference-ssd>/lieppos-builds/codex-fpsgo-dev20-continuation/BUILD.json",
+  "layout_changes": false,
+  "ordinary_writer_callsite": "__sched_setscheduler after dequeue/put_prev, before params/uclamp",
+  "other_req_writers": "RT default sync only changes non-user requests (owned applied requests are user-defined); fork/init write unpublished/new tasks; task-group writes are effective limits, not per-task request ownership",
+  "inheritance": "normal kernel request inheritance unchanged; child does not inherit a lease token"
+}

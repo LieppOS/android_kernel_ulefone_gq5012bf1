@@ -1,0 +1,48 @@
+{
+  "kernel_commit": "f3f4cb91171896b13d40ad40290d641a0c350832",
+  "modified_files": {
+    "drivers/misc/mediatek/sched/sugov/nonlinear_opp_cap.c": {
+      "base_sha256": "0d24b474c6e9b86a3c1920d10d63eca6673723548d79480c8a6c75b96f95e8bc",
+      "patched_sha256": "2bdd6f2bbac73aaa65d043b4a48e843be0cb167dea9d3236a21049267f33430e"
+    },
+    "drivers/misc/mediatek/sched/sugov/cpufreq_sugov_main.c": {
+      "base_sha256": "d511b86cb6fc5fba5cf04b98f012e12cfe527588b55bf65d185188ff64c9e506",
+      "patched_sha256": "570954147e594aa53e51788287223f5adca8b60e1fad2a71a1fab2fddecfadda"
+    },
+    "drivers/misc/mediatek/sched/eas/vip.c": {
+      "base_sha256": "61137bbf5c6732337f192297231caa598cedfe91f628555055462f0f513151d3",
+      "patched_sha256": "09ed31efa72756af37001b5b46fc201b7289b46fd335b2d537ab3fb009308984"
+    }
+  },
+  "new_files": {
+    "drivers/misc/mediatek/sched/sugov/mtk_perf_ctrl.h": "ccabc867594c9f13fd43c84e7d2dc344c41ef0973774ef5de38281b0c6347964",
+    "drivers/misc/mediatek/sched/sugov/mtk_perf_ctrl_impl.inc": "a02ec4c23dc51a8b696af9906c8fd23dec2f4c4b053e0e99c3c7aa6ab7ed27a9",
+    "drivers/misc/mediatek/sched/sugov/mtk_perf_ctrl_state.inc": "4fa9e50efbb3ceb21544d0e450b5ed34e497c42ef163f9adbea04c9723911c63",
+    "drivers/misc/mediatek/sched/sugov/mtk_perf_task_ctrl_impl.inc": "c2eea077e39b036220ef811944196053d3d9866d7b272d6fd46dd3a95013d1ce"
+  },
+  "scalar_writers_serialized": [
+    "set_wl_type_manual",
+    "set_curr_uclamp_ctrl",
+    "set_gear_uclamp_ctrl",
+    "set_gear_uclamp_max"
+  ],
+  "exports": [
+    "mtk_perf_ctrl_acquire",
+    "mtk_perf_ctrl_set_gear",
+    "mtk_perf_ctrl_is_live",
+    "mtk_perf_ctrl_release",
+    "mtk_perf_task_acquire",
+    "mtk_perf_task_set_hint",
+    "mtk_perf_task_is_live",
+    "mtk_perf_task_release",
+    "mtk_perf_task_legacy_hint",
+    "mtk_perf_task_legacy_vip"
+  ],
+  "contract": "legacy write atomically restores/withdraws temporary overlay BEFORE its write, including same-value writes; revoked owner cannot reassert or restore",
+  "native_compile": true,
+  "native_build_scope": "dev20 private reviewed overlay; scheduler/cpufreq providers rebuilt in focused 11-module group; explicit strict modpost without -n/-w and 1099 versioned imports matched; no runtime proof",
+  "build_receipt": "/mnt/<reference-ssd>/lieppos-builds/codex-fpsgo-dev20-continuation/BUILD.json",
+  "vip_config": "CONFIG_MTK_SCHED_VIP_TASK",
+  "scope": "sugov global controls and task-reference-backed native VIP/hint ownership; NOT scheduler uclamp_req arbitration",
+  "patch_sha256": "f9462f1b8c57926814f99fbf8c1555057a4ba3092968b1b18bf86f96cc699d77"
+}

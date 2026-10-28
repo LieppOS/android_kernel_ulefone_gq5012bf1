@@ -1,0 +1,63 @@
+{
+  "campaign": "C47",
+  "schema": "lieppos.source-import/1",
+  "repository": "android_kernel_ulefone_gq5012bf1",
+  "source": {
+    "worktree": "/mnt/<reference-ssd>/lieppos-c29/engine/builds/gq5012bf1-mt6878-c29-android17/android17-full-3/src/common",
+    "commit": "ce07b664a30032456984ac0df9682c91deddc90e",
+    "tree": "1a47f5432f7f9ad0bc3598b755ab1481db15b489",
+    "root_snapshot": "bcf53f02aa57a906efa31381ff20dbb8980c2425",
+    "history_preserved_in_import": false,
+    "history_note": "Source snapshot; external shallow worktree history remains authoritative."
+  },
+  "c44_reference": {
+    "kernel_release": "6.1.115-mt6878-gq5012bf1-c29+",
+    "image_sha256": "585080a838140a2c73c8caaae27c60ea6f360c926dc1b25ebc0e3a52c1f3a3d0",
+    "config_sha256": "40de208ba474abfac862ada26301d5a8b26490141e8c944ed303a3ccce8fd2fc",
+    "compiler": "Android clang r487747c (17.0.2)"
+  },
+  "excluded": [
+    {
+      "path": "certs/mtk_signing_key.pem",
+      "classification": "PKCS#8 RSA private key",
+      "reason": "MediaTek module-signing private key"
+    },
+    {
+      "path": "tools/testing/selftests/sgx/sign_key.pem",
+      "classification": "RSA private key (test fixture)",
+      "reason": "private key material"
+    }
+  ],
+  "public_certificate": {
+    "path": "certs/mtk_signing_key.x509",
+    "sha256": "6fed9fec1875003a3403cd17729fbc2392310d35627aab9882a6c76d440d6961",
+    "private_key_present": false
+  },
+  "config": {
+    "path": "configs/c44-reference.config",
+    "sha256": "40de208ba474abfac862ada26301d5a8b26490141e8c944ed303a3ccce8fd2fc",
+    "module_sig_key_original": "certs/mtk_signing_key.pem",
+    "module_sig_key_build_substitution": "public certificate written as PEM at certs/mtk_signing_key.pem in the disposable build worktree; stored config unchanged"
+  },
+  "patch_lineage": {
+    "c45": {
+      "source_commit": "d02a89424974655d8b8a981421aced87d0761fae",
+      "files": [
+        "drivers/gpu/drm/panel/panel-ky-vtdr6115-dphy-cmd.c"
+      ]
+    },
+    "c46": {
+      "source_commit": "2c896fab1c641ee7577ba40ccc2137b660e94c7c",
+      "files": [
+        "drivers/mmc/host/mtk-mmc.c"
+      ]
+    }
+  },
+  "import": {
+    "snapshot_file_count": 87016,
+    "snapshot_bytes": 1521456423,
+    "final_file_count": 87027,
+    "final_bytes": 1521093124,
+    "private_key_files": 0
+  }
+}

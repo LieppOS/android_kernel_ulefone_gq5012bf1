@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: GPL-2.0
+config MTK_SCHEDULER_EXT
+	tristate "MediaTek scheduler extension identity"
+	help
+	  The stock scheduler_ext module is an ABI-neutral metadata-only module.
+	  It contains no scheduler hooks or exports.  Enable this only to
+	  reproduce the shipped module identity.

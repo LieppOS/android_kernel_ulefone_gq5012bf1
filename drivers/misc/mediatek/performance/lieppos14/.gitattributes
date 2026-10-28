@@ -1,0 +1,3 @@
+# Unified-diff context contains a mandatory prefix space before native tabs.
+# Treat integration patches as patch data; keep source-code whitespace checks.
+integration/target-c/*.patch -whitespace

@@ -1,0 +1,17 @@
+# Modules whose packaged .ko is not byte-identical to the C44 reference `out/`.
+#
+# Normalization:
+#   llvm-strip --strip-debug <file>
+#   llvm-objcopy --remove-section .note.gnu.build-id <file> <file>
+#   sha256sum <file>
+#
+# The expected hashes below are the authenticated C45/C46 packaged-module
+# hashes after that normalization. The panel and mtk-mmc source fixes are
+# preserved in the public snapshot; only DWARF source-path strings and the
+# resulting build-id differ from the older C44 reference. The apusys entry
+# reflects the C48 MDLA link-order pin: code and data now match the C44
+# reference, while pre-normalization local symbol/string tables still differ.
+
+drivers/gpu/drm/panel/panel-ky-vtdr6115-dphy-cmd.ko	fbc02d34e185367e902e617d35027d4d3c23ae93b1931eb7f8cb715d6f2f3a27
+drivers/mmc/host/mtk-mmc.ko	6a50e4802272a2cb2ffe3710547c74d3f6acac2586c7ab6a512c2ac95c45e845
+drivers/misc/mediatek/apusys/apusys.ko	c413f18232f574cd1463bc9c1643c9f897a6ac1eee1a66e475d7c955d44e0f53

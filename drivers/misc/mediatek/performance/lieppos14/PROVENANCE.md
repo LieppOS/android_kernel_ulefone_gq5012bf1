@@ -1,0 +1,9 @@
+# Performance source continuation
+
+This is an isolated continuation of the FPSGO source-owning project, not a claim to have accessed its protected worktree or Git branch.
+
+* `source/`: the 13 source files from `/home/<user>/kernel-work/codex-fpsgo-13/module-src`, independently hash-checked against committed research `5922340e9135903f554650a3ab998e685912021a`, `FPSGO-REA-RECONSTRUCTION-13/evidence/strict-final-source-inputs.json`. The historical parent reported there is `a4cc48d068b1f42de8a8fc0555aa1428cb9c04de`; Phase 13 changes were then uncommitted in that receipt. We do NOT assert that parent contains the final files. The original branch is inaccessible under the protected-path restriction. File-level continuation patches are provided for owner review.
+* `public/`: scoped `git archive` of authenticated input-store `kernel_device_modules-6.1` commit `5e415e059253ce0d2e61c97108e5f5785d71f06f`. Original MediaTek copyright/SPDX notices are preserved per file. The initial import includes FPSGO base/FBT/FSTB/XGF/composer/GBE, performance ioctl, scheduler reference sources, and their include dependencies. HEAD is scoped to the three maintained FPSGO/ioctl/PowerHAL groups and external headers actually consumed by both generic-GKI builds; unrelated unbuilt reference copies remain in the authenticated donor and initial import commit rather than being duplicated in the integration delivery. Native vendor features require their remaining actual providers/headers and are not claimed buildable by this generic port.
+* Private wrapper declares `Proprietary`; it is not relicensed by inclusion here. Public components retain their original licenses. Distribution/license review is required before integration release.
+
+All artifacts are offline experimental candidates/HOLD. No stock-derived CRC input, fake providers, stock object reuse or accepted-OK promotion is permitted.

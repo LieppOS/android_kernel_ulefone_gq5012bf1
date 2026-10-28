@@ -1,0 +1,11 @@
+{
+  "schema": "lieppos.kernel-owner-patch/1",
+  "base_commit": "0a83530b9ea3c1f1ae2c76e1437375bd695d922a",
+  "patch": "c17-group-auto-admission.patch",
+  "requires": "Update the lieppos14 subtree to the Campaign 17 Codex revision containing mtk_group_auto_set before compiling. All original seven C23 overlays are already committed on the base; do not reapply them.",
+  "paths": ["drivers/misc/mediatek/sched/eas/group.c"],
+  "reason": "Automatic wake/cgroup callbacks must recheck customized under task pi and group writer locks; stale pre-lock checks otherwise revoke newly admitted ADPF group/PD ownership.",
+  "exported_interface_changes": false,
+  "ordinary_explicit_writer_preemption": "unchanged",
+  "applied_to_c23_owner_tree": false
+}

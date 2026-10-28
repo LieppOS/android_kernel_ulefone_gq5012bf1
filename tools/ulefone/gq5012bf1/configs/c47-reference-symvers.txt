@@ -1,0 +1,13 @@
+# Reference symvers for the C48 public snapshot.
+#
+# The public snapshot intentionally omits five modules. Four embed vendor
+# firmware/calibration images; one is the proprietary FPSGO private wrapper.
+# Two of those modules exported symbols, so Module.symvers and
+# modules-only.symvers must differ from the C47 reference by exactly the two
+# Hynitron lines below. No other line may change.
+
+Module.symvers	daa6c46d835806f5821ac0c20a34b895ccb2977057103a582463373f70b1fe94
+modules-only.symvers	97c38e39ac57c20bb24936f96440060c7a6e15aca6eb2975c70c5f652567e12e
+
+0x4e4b7919	tiny_tp_gesture_contorl	drivers/input/touchscreen/hynitron/hynitron	EXPORT_SYMBOL
+0xfcc94fc7	tiny_tp_power_contorl	drivers/input/touchscreen/hynitron/hynitron	EXPORT_SYMBOL

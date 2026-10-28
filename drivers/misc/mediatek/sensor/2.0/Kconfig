@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: GPL-2.0
+
+source "$(KCONFIG_EXT_PREFIX)drivers/misc/mediatek/sensor/2.0/mtk_nanohub/Kconfig"
+source "$(KCONFIG_EXT_PREFIX)drivers/misc/mediatek/sensor/2.0/sensorhub/Kconfig"
+source "$(KCONFIG_EXT_PREFIX)drivers/misc/mediatek/sensor/2.0/test/Kconfig"
+source "$(KCONFIG_EXT_PREFIX)drivers/misc/mediatek/sensor/2.0/lsm6dsm_secondary/Kconfig"
+
+config YFT_DEVINFO
+	tristate "Ulefone/YFT device information provider (yft_devinfo)"
+	default n
+	help
+	  YFT (Ulefone) device-information provider. It is the shared provider
+	  consumed by the touch, sensor, fuel-gauge and camera modules on the
+	  GQ5012BF1 platform (hf_manager, focaltech, hynitron, sh366003_fg, ...).
+	  Source reconstructed by LieppOS from the stock vendor_dlkm binary.

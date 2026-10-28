@@ -1,0 +1,59 @@
+diff --git a/drivers/misc/mediatek/performance/Makefile b/drivers/misc/mediatek/performance/Makefile
+--- a/drivers/misc/mediatek/performance/Makefile
++++ b/drivers/misc/mediatek/performance/Makefile
+@@ -15,7 +15,9 @@
+ include $(MTK_PM_BUILD_FOLDER)/perf_ioctl/build.mk
+ MTK_PERF_IOCTL = $(mtk_perf_ioctl_objs:%.o=perf_ioctl/%.o)
+ MTK_PERF_IOCTL_SRC = $(MTK_PERF_IOCTL)
++ifeq ($(filter y m,$(CONFIG_LIEPPOS_PERFORMANCE)),)
+ obj-$(CONFIG_MTK_PERFORMANCE_MODULE) += mtk_perf_ioctl.o
++endif
+ mtk_perf_ioctl-objs += $(MTK_PERF_IOCTL_SRC)
+ 
+ # mtk_ioctl_touch_boost
+@@ -27,13 +29,17 @@
+ # mtk_ioctl_powerhal
+ MTK_IOCTL_POWERHAL = $(mtk_ioctl_powerhal_objs:%.o=perf_ioctl/%.o)
+ MTK_IOCTL_POWERHAL_SRC = $(MTK_IOCTL_POWERHAL)
++ifeq ($(filter y m,$(CONFIG_LIEPPOS_PERFORMANCE)),)
+ obj-$(CONFIG_MTK_PERFORMANCE_MODULE) += mtk_ioctl_powerhal.o
++endif
+ mtk_ioctl_powerhal-objs += $(MTK_IOCTL_POWERHAL_SRC)
+ 
+ # mtk_perf_ioctl_magt
+ MTK_PERF_IOCTL_MAGT = $(mtk_perf_ioctl_magt_objs:%.o=perf_ioctl/%.o)
+ MTK_PERF_IOCTL_MAGT_SRC = $(MTK_PERF_IOCTL_MAGT)
++ifeq ($(filter y m,$(CONFIG_LIEPPOS_PERFORMANCE)),)
+ obj-$(CONFIG_MTK_PERF_IOCTL_MAGT) += mtk_perf_ioctl_magt.o
++endif
+ mtk_perf_ioctl_magt-objs += $(MTK_PERF_IOCTL_MAGT_SRC)
+ 
+ # mtk_game
+@@ -44,10 +50,17 @@
+ mtk_game-objs += $(MTK_GAME_SRC)
+ 
+ #Generic subdir build
++ifeq ($(filter y m,$(CONFIG_LIEPPOS_PERFORMANCE)),)
+ obj-$(CONFIG_MTK_FPSGO_V3) += fpsgo_v3/
++endif
+ obj-$(CONFIG_MTK_FRS) += frs/
++ifeq ($(filter y m,$(CONFIG_LIEPPOS_PERFORMANCE)),)
+ obj-$(CONFIG_MTK_PERFORMANCE_MODULE) += powerhal_cpu_ctrl/
++endif
+ obj-$(CONFIG_MTK_PERFORMANCE_MODULE) += touch_boost/
+ 
+ obj-$(CONFIG_MTK_LOAD_TRACKER) += load_track/
+ obj-$(CONFIG_MTK_LOAD_TRACKER) += uload_ind/
++
++# Complete maintained replacement cohort; never both FPSGO generations.
++obj-$(CONFIG_LIEPPOS_PERFORMANCE) += lieppos14/
+diff --git a/drivers/misc/mediatek/performance/Kconfig b/drivers/misc/mediatek/performance/Kconfig
+--- a/drivers/misc/mediatek/performance/Kconfig
++++ b/drivers/misc/mediatek/performance/Kconfig
+@@ -55,3 +55,6 @@
+ 	  for game only, need to modify in this module.
+ 	  Default it enable on eng, user, userdebug load.
+ 
++
++# Native selectors remain defined above; do not source standalone hidden configs.
++source "drivers/misc/mediatek/performance/lieppos14/Kconfig.targetc"

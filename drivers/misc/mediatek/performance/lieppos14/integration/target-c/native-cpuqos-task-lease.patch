@@ -1,0 +1,260 @@
+diff --git a/drivers/misc/mediatek/cache-auditor/cpuqos_v3/Makefile b/drivers/misc/mediatek/cache-auditor/cpuqos_v3/Makefile
+--- a/drivers/misc/mediatek/cache-auditor/cpuqos_v3/Makefile
++++ b/drivers/misc/mediatek/cache-auditor/cpuqos_v3/Makefile
+@@ -7,7 +7,7 @@
+ 
+ subdir-ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/sched/
+ 
+-ccflags-y += -I$(srctree)/$(src)
++ccflags-y += -I$(if $(filter /%,$(src)),$(src),$(srctree)/$(src))
+ 
+ obj-$(CONFIG_MTK_CPUQOS_V3) += cpuqos_v3.o
+ cpuqos_v3-y += cpuqos_v3_proto.o cpuqos_sys_common.o
+diff --git a/drivers/misc/mediatek/cache-auditor/cpuqos_v3/cpuqos_v3.h b/drivers/misc/mediatek/cache-auditor/cpuqos_v3/cpuqos_v3.h
+--- a/drivers/misc/mediatek/cache-auditor/cpuqos_v3/cpuqos_v3.h
++++ b/drivers/misc/mediatek/cache-auditor/cpuqos_v3/cpuqos_v3.h
+@@ -7,6 +7,18 @@
+ #define CPUQOS_V3_H
+ #include <linux/ioctl.h>
+ #include "common.h"
++
++/* Caller retains task for the full sleepable call. Token ownership is exclusive;
++ * ordinary task-PD writers atomically revoke it, including same-value writes.
++ */
++int cpuqos_task_pd_set(struct task_struct *task, int pd);
++#if IS_ENABLED(CONFIG_MTK_PERF_CTRL_LEASE)
++struct mtk_cpuqos_task_lease;
++int mtk_cpuqos_task_acquire(struct task_struct *task, int pd,
++	struct mtk_cpuqos_task_lease **out);
++bool mtk_cpuqos_task_is_live(struct mtk_cpuqos_task_lease *lease);
++void mtk_cpuqos_task_release(struct mtk_cpuqos_task_lease *lease);
++#endif
+ 
+ #if IS_ENABLED(CONFIG_MTK_SLBC)
+ extern u32 slbc_sram_read(u32 offset);
+diff --git a/drivers/misc/mediatek/cache-auditor/cpuqos_v3/cpuqos_v3_proto.c b/drivers/misc/mediatek/cache-auditor/cpuqos_v3/cpuqos_v3_proto.c
+--- a/drivers/misc/mediatek/cache-auditor/cpuqos_v3/cpuqos_v3_proto.c
++++ b/drivers/misc/mediatek/cache-auditor/cpuqos_v3/cpuqos_v3_proto.c
+@@ -407,63 +407,10 @@
+ }
+ EXPORT_SYMBOL_GPL(set_group_pd);
+ 
+-/*
+- * Set task use which pd
+- * pid: task pid
+- * pd: if >= 0, set task is pd(ignore group setting);
+- *         if < 0, set task use its group pd.
+- * Return: 0: success,
+-	   -1: perf mode is disable / p is not exist.
+- */
+-int set_task_pd(int pid, int pd)
+-{
+-	struct task_struct *p;
+-	struct cgroup_subsys_state *css;
+-	int old_pd;
+-	int new_pd;
+-	struct cpuqos_task_struct *cqts;
+-
+-	if (cpuqos_perf_mode == DISABLE || (plat_enable == 0) || (pid <= 0))
+-		return -1;
+-
+-	rcu_read_lock();
+-	p = find_task_by_vpid(pid);
+-
+-	if (p) {
+-		get_task_struct(p);
+-		cqts = &((struct mtk_task *)p->android_vendor_data1)->cpuqos_task;
+-	}
+-	rcu_read_unlock();
+-
+-	if (!p)
+-		return -1;
+-
+-	rcu_read_lock();
+-	css = task_css(p, cpuqos_subsys_id);
+-	rcu_read_unlock();
+-
+-	old_pd = cpuqos_v3_map_task_pd(p); /* before rank change */
+-
+-	if (pd >= 0) { /* set task is critical task */
+-		WRITE_ONCE(cqts->rank, TASK_RANK);
+-		new_pd = pd;
+-	} else { /* reset to group setting */
+-		WRITE_ONCE(cqts->rank, GROUP_RANK);
+-		new_pd = cpuqos_v3_map_task_pd(p); /* after rank change */
+-	}
+-
+-	trace_cpuqos_set_task_pd(p->pid, css->id, pd,
+-				old_pd, new_pd,
+-				get_task_rank(p), cpuqos_perf_mode);
+-
+-	if (new_pd != old_pd)
+-		cpuqos_v3_kick_task(p, new_pd);
+-
+-	put_task_struct(p);
+-
+-	return 0;
+-}
+-EXPORT_SYMBOL_GPL(set_task_pd);
++/* Retained-task PD writes and genuine native ownership live beside the actual
++ * map/IPI helpers. No PID relookup or write-back of an old notifier snapshot.
++ */
++#include "../../performance/lieppos14/integration/target-c/provider/mtk_perf_cpuqos_ctrl_impl.inc"
+ 
+ /*
+  * Set group is critical task(CT)/non-critical task(NCT)
+diff --git a/drivers/misc/mediatek/sched/eas/group.c b/drivers/misc/mediatek/sched/eas/group.c
+--- a/drivers/misc/mediatek/sched/eas/group.c
++++ b/drivers/misc/mediatek/sched/eas/group.c
+@@ -23,6 +23,7 @@
+ #include "flt_init.h"
+ #include "flt_api.h"
+ #include "group.h"
++#include "../../cache-auditor/cpuqos_v3/cpuqos_v3.h"
+ #include "flt_cal.h"
+ #include "eas_trace.h"
+ #include <sugov/cpufreq.h>
+@@ -191,38 +192,8 @@
+ 	return 0;
+ }
+ 
+-int __sched_set_grp_id(struct task_struct *p, int group_id)
+-{
+-	int rc = 0;
+-	unsigned long flags;
+-	struct grp *grp = NULL;
+-	struct gp_task_struct *gts = &((struct mtk_task *)p->android_vendor_data1)->gp_task;
+-
+-	if (group_id >= GROUP_ID_RECORD_MAX)
+-		return -1;
+-
+-	raw_spin_lock_irqsave(&p->pi_lock, flags);
+-	write_lock(&related_thread_group_lock);
+-
+-	/* Switching from one group to another directly is not permitted */
+-	if ((!gts->grp && group_id < 0) || (gts->grp && group_id >= 0))
+-		goto done;
+-
+-	/* remove */
+-	if (group_id < 0) {
+-		remove_task_from_group(p);
+-		goto done;
+-	}
+-
+-	grp = lookup_grp(group_id);
+-	rc = add_task_to_group(p, grp);
+-
+-done:
+-	write_unlock(&related_thread_group_lock);
+-	raw_spin_unlock_irqrestore(&p->pi_lock, flags);
+-
+-	return rc;
+-}
++/* Same native membership helpers/lock order; retained group+PD ownership. */
++#include "../../performance/lieppos14/integration/target-c/provider/mtk_perf_group_ctrl_impl.inc"
+ 
+ static void init_topapp_tg(struct task_group *tg)
+ {
+@@ -286,7 +257,7 @@
+ 	int groupid, ret;
+ 	struct gp_task_struct *gts = &((struct mtk_task *)new->android_vendor_data1)->gp_task;
+ 
+-	if (gts->customized)
++	if (READ_ONCE(gts->customized))
+ 		return;
+ 	groupid = cgrp_to_grpid(new);
+ 	ret = __sched_set_grp_id(new, groupid);
+@@ -299,6 +270,8 @@
+ 	struct gp_task_struct *gts = &((struct mtk_task *)p->android_vendor_data1)->gp_task;
+ 
+ 	rcu_assign_pointer(gts->grp, NULL);
++	/* A new task must not inherit a parent's temporary custom-group flag. */
++	WRITE_ONCE(gts->customized, false);
+ }
+ 
+ static void group_init_existing_task_load(struct task_struct *p)
+@@ -347,7 +320,7 @@
+ 	cgroup_taskset_for_each(task, css, tset) {
+ 		grp_id = cgrptg->colocate ? cgrptg->groupid : -1;
+ 		gts = &((struct mtk_task *)task->android_vendor_data1)->gp_task;
+-		if (gts->customized)
++		if (READ_ONCE(gts->customized))
+ 			continue;
+ 		ret = __sched_set_grp_id(task, grp_id);
+ 		if (trace_sched_task_to_grp_enabled())
+@@ -398,29 +371,26 @@
+ {
+ 	struct task_struct *p;
+ 	int ret = -1;
+-	struct gp_task_struct *gts;
+ 
+ 	if (grp_id >= GROUP_ID_RECORD_MAX)
+ 		return ret;
+ 	if (unlikely(group_get_mode() == GP_MODE_0))
+ 		return ret;
++	rcu_read_lock();
+ 	p = get_pid_task(find_vpid(pid), PIDTYPE_PID);
++	rcu_read_unlock();
+ 	if (!p)
+ 		return ret;
+-	gts = &((struct mtk_task *)p->android_vendor_data1)->gp_task;
+-	if (grp_id < 0)
+-		gts->customized = false;
+-	else
+-		gts->customized = true;
+-	ret = __sched_set_grp_id(p, grp_id);
++	ret = mtk_group_custom_set(p, grp_id);
+ 	if (trace_sched_task_to_grp_enabled())
+ 		trace_sched_task_to_grp(p, grp_id, ret, GP_API);
++	/* Keep the SAME task through the native PD update. Dropping this reference
++	 * and looking up pid again can apply half of the operation to a replacement.
++	 * Group/PD owner transactions are a separate higher-level contract.
++	 */
++	ret = cpuqos_task_pd_set(p, grp_id < 0 ? -1 :
++		grp_id + FLT_GROUP_START_IDX);
+ 	put_task_struct(p);
+-
+-	if (grp_id < 0)
+-		ret = set_task_pd(pid, -1);
+-	else
+-		ret = set_task_pd(pid, grp_id + FLT_GROUP_START_IDX);
+ 
+ 	return ret;
+ }
+@@ -519,13 +489,13 @@
+ 
+ void  group_set_mode(u32 mode)
+ {
+-	GP_mode = mode;
++	WRITE_ONCE(GP_mode, mode);
+ }
+ EXPORT_SYMBOL(group_set_mode);
+ 
+ u32 group_get_mode(void)
+ {
+-	return GP_mode;
++	return READ_ONCE(GP_mode);
+ }
+ EXPORT_SYMBOL(group_get_mode);
+ 
+diff --git a/drivers/misc/mediatek/sched/eas/group.h b/drivers/misc/mediatek/sched/eas/group.h
+--- a/drivers/misc/mediatek/sched/eas/group.h
++++ b/drivers/misc/mediatek/sched/eas/group.h
+@@ -79,6 +79,17 @@
+ 
+ /* pd setting related API*/
+ extern int set_task_pd(int pid, int pd);
++extern int cpuqos_task_pd_set(struct task_struct *task, int pd);
++#if IS_ENABLED(CONFIG_MTK_PERF_CTRL_LEASE)
++/* Caller serializes users against release; CPUQoS and group revocation are
++ * independently observable. A false liveness result requires full release.
++ */
++struct mtk_group_task_lease;
++int mtk_group_task_acquire(struct task_struct *task, int group_id,
++	struct mtk_group_task_lease **out);
++bool mtk_group_task_is_live(struct mtk_group_task_lease *lease);
++void mtk_group_task_release(struct mtk_group_task_lease *lease);
++#endif
+ extern int set_group_pd(int group_id, int pd);
+ 
+ void group_init(void);

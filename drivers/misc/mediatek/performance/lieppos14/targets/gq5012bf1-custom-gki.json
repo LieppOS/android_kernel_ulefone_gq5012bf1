@@ -1,0 +1,13 @@
+{
+ "schema": "lieppos.performance-target/1",
+ "id": "gq5012bf1-experimental-custom-gki",
+ "release": "6.1.115-g6b18f0b574ab",
+ "kernel_commit": "6b18f0b574ab3267615ae6ce642d5a7c3c21ac09",
+ "config_sha256": "62b76a42a4571491bf274e33fdfc41cc3b3f14faf600297f462ca18d12ee2352",
+ "kernel_symvers_sha256": "d2405cfaead7d0fdb2942cd0f70a49bd38c2492c2acd613c297191f544ea16e2",
+ "compiler": "Android clang r487747c 17.0.2",
+ "profile": "generic-gki-frequency-uclamp-qos",
+ "native_vendor_scheduler": false,
+ "kernel_changes_required_for_generic_profile": [],
+ "note": "All group modules must be rebuilt using this target. Stock CRCs/artifacts are invalid here. Future MT6878 device-kernel capabilities require a separate target and real platform providers."
+}

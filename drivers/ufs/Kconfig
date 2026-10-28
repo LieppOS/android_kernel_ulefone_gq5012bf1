@@ -1,0 +1,87 @@
+# SPDX-License-Identifier: GPL-2.0-only
+#
+# UFS subsystem configuration
+#
+
+menuconfig SCSI_UFSHCD
+	tristate "Universal Flash Storage Controller"
+	depends on SCSI && SCSI_DMA
+	select PM_DEVFREQ
+	select DEVFREQ_GOV_SIMPLE_ONDEMAND
+	select NLS
+	help
+	  Enables support for UFS (Universal Flash Storage) host controllers.
+	  A UFS host controller is an electronic component that is able to
+	  communicate with a UFS card. UFS host controllers occur in
+	  smartphones, laptops, digital cameras and also in cars.
+	  The kernel module will be called ufshcd.
+
+	  To compile this driver as a module, choose M here and read
+	  <file:Documentation/scsi/ufs.rst>.
+	  However, do not compile this as a module if your root file system
+	  (the one containing the directory /) is located on a UFS device.
+
+if SCSI_UFSHCD
+
+source "drivers/ufs/core/Kconfig"
+
+source "drivers/ufs/host/Kconfig"
+
+endif
+
+# ---- MediaTek/vendor entries merged from kernel_device_modules ----
+config DEVICE_MODULES_SCSI_UFS_MEDIATEK
+	tristate "Mediatek specific hooks to UFS controller platform driver"
+	depends on SCSI_UFSHCD_PLATFORM && ARCH_MEDIATEK
+	select DEVICE_MODULES_PHY_MTK_UFS
+	select DEVICE_MODULES_RESET_TI_SYSCON
+	help
+	  This selects the Mediatek specific additions to UFSHCD platform driver.
+	  UFS host on Mediatek needs some vendor specific configuration before
+	  accessing the hardware which includes PHY configuration and vendor
+	  specific registers.
+
+	  Select this if you have UFS controller on Mediatek chipset.
+
+	  If unsure, say N.
+
+
+config SCSI_UFS_MEDIATEK_DBG
+	tristate "Debugging facility for MediaTek UFS platforms"
+	depends on DEVICE_MODULES_SCSI_UFS_MEDIATEK
+	help
+	  This selects the debugging facility for Mediatek UFS platforms.
+	  Provide UFS command history and connection to MediaTek Block IO
+	  Tracer.
+
+	  Select this if you want to enable above facilities.
+
+	  If unsure, say N.
+
+source "$(KCONFIG_EXT_PREFIX)drivers/ufs/vendor/Kconfig"
+
+
+config MTK_UFS_DEBUG
+	bool "Support Mediatek UFS upstreaming features"
+	depends on SCSI_UFSHCD
+	help
+	  If it is enabled, all code sections that is under
+	  upstream process or not pulled from the mainstream
+	  are enabled.
+
+	  If unsure, say N.
+
+
+config MTK_UFS_DEBUG_BUILD
+	bool "Support Mediatek UFS facilities in debug build only"
+	depends on SCSI_UFSHCD
+	help
+	  This selects the debugging facility for Mediatek UFS platforms
+	  existed in debug build only.
+
+	  Select this if you want to enable above facilities.
+
+	  If unsure, say N.
+
+
+

@@ -1,0 +1,8 @@
+# Modules intentionally absent from the C48 public source snapshot.
+# Format: path relative to the build output, TAB, reason.
+
+drivers/misc/mediatek/performance/lieppos14/source/fpsgo.ko	private-fpsgo-wrapper
+drivers/input/touchscreen/focaltech_touch/focaltech_touch_spi_ft3680.ko	embedded-vendor-firmware
+drivers/input/touchscreen/hynitron/hynitron.ko	embedded-vendor-firmware
+drivers/misc/mediatek/tiny_lcd/spi_tiny_co5300_lcd.ko	embedded-vendor-logo-init
+drivers/power/supply/sh366003/sh366003_fg.ko	embedded-stock-afi-data

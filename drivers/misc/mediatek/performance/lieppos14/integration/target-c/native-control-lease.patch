@@ -1,0 +1,700 @@
+diff --git a/drivers/misc/mediatek/sched/sugov/nonlinear_opp_cap.c b/drivers/misc/mediatek/sched/sugov/nonlinear_opp_cap.c
+--- a/drivers/misc/mediatek/sched/sugov/nonlinear_opp_cap.c
++++ b/drivers/misc/mediatek/sched/sugov/nonlinear_opp_cap.c
+@@ -269,18 +269,34 @@
+ }
+ EXPORT_SYMBOL_GPL(get_cpu_type);
+ 
++/* Lease bookkeeping must precede every scalar control writer. */
++#include "mtk_perf_ctrl_state.inc"
++
+ void set_wl_type_manual(int val)
+ {
++#if IS_ENABLED(CONFIG_MTK_PERF_CTRL_LEASE)
++	unsigned long lease_flags;
++#endif
++
++#if IS_ENABLED(CONFIG_MTK_PERF_CTRL_LEASE)
++	raw_spin_lock_irqsave(&mtk_perf_ctrl_lock, lease_flags);
++	mtk_perf_ctrl_preempt_locked();
++#endif
++
+ 	if (val >= 0 && val < nr_wl_type && is_wl_support())
+-		wl_type_manual = val;
++		WRITE_ONCE(wl_type_manual, val);
+ 	else
+-		wl_type_manual = -1;
++		WRITE_ONCE(wl_type_manual, -1);
++
++#if IS_ENABLED(CONFIG_MTK_PERF_CTRL_LEASE)
++	raw_spin_unlock_irqrestore(&mtk_perf_ctrl_lock, lease_flags);
++#endif
+ }
+ EXPORT_SYMBOL_GPL(set_wl_type_manual);
+ 
+ int get_wl_type_manual(void)
+ {
+-	return wl_type_manual;
++	return READ_ONCE(wl_type_manual);
+ }
+ EXPORT_SYMBOL_GPL(get_wl_type_manual);
+ 
+@@ -294,10 +310,10 @@
+ 		if (last_jiffies !=  tmp_jiffies) {
+ 			last_jiffies =  tmp_jiffies;
+ 			spin_unlock(&update_wl_tbl_lock);
+-			if (wl_type_manual == -1)
++			if (READ_ONCE(wl_type_manual) == -1)
+ 				tmp = get_wl(0);
+ 			else
+-				tmp = wl_type_manual;
++				tmp = READ_ONCE(wl_type_manual);
+ 			if (tmp >= 0 && tmp < nr_wl_type)
+ 				wl_type_curr = tmp;
+ 			if (last_wl_type != wl_type_curr && wl_type_curr >= 0
+@@ -1448,18 +1464,30 @@
+ bool cu_ctrl;
+ bool get_curr_uclamp_ctrl(void)
+ {
+-	return cu_ctrl;
++	return READ_ONCE(cu_ctrl);
+ }
+ EXPORT_SYMBOL_GPL(get_curr_uclamp_ctrl);
+ void set_curr_uclamp_ctrl(int val)
+ {
+-	cu_ctrl = val ? true : false;
++#if IS_ENABLED(CONFIG_MTK_PERF_CTRL_LEASE)
++	unsigned long lease_flags;
++#endif
++
++#if IS_ENABLED(CONFIG_MTK_PERF_CTRL_LEASE)
++	raw_spin_lock_irqsave(&mtk_perf_ctrl_lock, lease_flags);
++	mtk_perf_ctrl_preempt_locked();
++#endif
++
++	WRITE_ONCE(cu_ctrl, val ? true : false);
++
++#if IS_ENABLED(CONFIG_MTK_PERF_CTRL_LEASE)
++	raw_spin_unlock_irqrestore(&mtk_perf_ctrl_lock, lease_flags);
++#endif
+ }
+ EXPORT_SYMBOL_GPL(set_curr_uclamp_ctrl);
+ int set_curr_uclamp_hint(int pid, int set)
+ {
+ 	struct task_struct *p;
+-	struct curr_uclamp_hint *cu_ht;
+ 
+ 	rcu_read_lock();
+ 	p = find_task_by_vpid(pid);
+@@ -1474,8 +1502,11 @@
+ 	}
+ 
+ 	get_task_struct(p);
+-	cu_ht = &((struct mtk_task *) p->android_vendor_data1)->cu_hint;
+-	cu_ht->hint = set;
++#if IS_ENABLED(CONFIG_MTK_PERF_CTRL_LEASE)
++	mtk_perf_task_legacy_hint(p, set);
++#else
++	WRITE_ONCE(((struct mtk_task *)p->android_vendor_data1)->cu_hint.hint, set);
++#endif
+ 	put_task_struct(p);
+ 	rcu_read_unlock();
+ 	return 0;
+@@ -1501,7 +1532,7 @@
+ 
+ 	get_task_struct(p);
+ 	cu_ht = &((struct mtk_task *) p->android_vendor_data1)->cu_hint;
+-	hint = cu_ht->hint;
++	hint = READ_ONCE(cu_ht->hint);
+ 	put_task_struct(p);
+ 	rcu_read_unlock();
+ 	return hint;
+@@ -1515,32 +1546,45 @@
+ bool gu_ctrl;
+ bool get_gear_uclamp_ctrl(void)
+ {
+-	return gu_ctrl;
++	return READ_ONCE(gu_ctrl);
+ }
+ EXPORT_SYMBOL_GPL(get_gear_uclamp_ctrl);
+ void set_gear_uclamp_ctrl(int val)
+ {
+ 	int i;
+ 
+-	gu_ctrl = val ? true : false;
+-	if (gu_ctrl == false) {
++#if IS_ENABLED(CONFIG_MTK_PERF_CTRL_LEASE)
++	unsigned long lease_flags;
++#endif
++
++#if IS_ENABLED(CONFIG_MTK_PERF_CTRL_LEASE)
++	raw_spin_lock_irqsave(&mtk_perf_ctrl_lock, lease_flags);
++	mtk_perf_ctrl_preempt_locked();
++#endif
++
++	WRITE_ONCE(gu_ctrl, val ? true : false);
++	if (READ_ONCE(gu_ctrl) == false) {
+ 		for (i = 0; i < pd_count; i++)
+-			gear_uclamp_max[i] = SCHED_CAPACITY_SCALE;
+-	}
++			WRITE_ONCE(gear_uclamp_max[i], SCHED_CAPACITY_SCALE);
++	}
++
++#if IS_ENABLED(CONFIG_MTK_PERF_CTRL_LEASE)
++	raw_spin_unlock_irqrestore(&mtk_perf_ctrl_lock, lease_flags);
++#endif
+ }
+ EXPORT_SYMBOL_GPL(set_gear_uclamp_ctrl);
+ 
+ int get_gear_uclamp_max(int gearid)
+ {
+-	return gear_uclamp_max[gearid];
++	return READ_ONCE(gear_uclamp_max[gearid]);
+ }
+ EXPORT_SYMBOL_GPL(get_gear_uclamp_max);
+ 
+ int get_cpu_gear_uclamp_max(unsigned int cpu)
+ {
+-	if (gu_ctrl == false)
++	if (READ_ONCE(gu_ctrl) == false)
+ 		return SCHED_CAPACITY_SCALE;
+-	return gear_uclamp_max[topology_cluster_id(cpu)];
++	return READ_ONCE(gear_uclamp_max[topology_cluster_id(cpu)]);
+ }
+ EXPORT_SYMBOL_GPL(get_cpu_gear_uclamp_max);
+ 
+@@ -1548,10 +1592,10 @@
+ {
+ 	unsigned long capacity, freq;
+ 
+-	if (gu_ctrl == false)
++	if (READ_ONCE(gu_ctrl) == false)
+ 		return SCHED_CAPACITY_SCALE;
+ 
+-	capacity = (gear_uclamp_max[topology_cluster_id(cpu)] *
++	capacity = (READ_ONCE(gear_uclamp_max[topology_cluster_id(cpu)]) *
+ 		get_adaptive_margin(cpu)) >> SCHED_CAPACITY_SHIFT;
+ 	freq = pd_get_util_freq(cpu, capacity);
+ 	return pd_get_freq_util(cpu, freq);
+@@ -1560,9 +1604,30 @@
+ 
+ void set_gear_uclamp_max(int gearid, int val)
+ {
+-	gear_uclamp_max[gearid] = val;
++#if IS_ENABLED(CONFIG_MTK_PERF_CTRL_LEASE)
++	unsigned long lease_flags;
++#endif
++
++	if (WARN_ON_ONCE(gearid < 0 || gearid >= pd_count ||
++	    gearid >= ARRAY_SIZE(gear_uclamp_max) || val < 0 ||
++	    val > SCHED_CAPACITY_SCALE))
++		return;
++
++#if IS_ENABLED(CONFIG_MTK_PERF_CTRL_LEASE)
++	raw_spin_lock_irqsave(&mtk_perf_ctrl_lock, lease_flags);
++	mtk_perf_ctrl_preempt_locked();
++#endif
++
++	WRITE_ONCE(gear_uclamp_max[gearid], val);
++
++#if IS_ENABLED(CONFIG_MTK_PERF_CTRL_LEASE)
++	raw_spin_unlock_irqrestore(&mtk_perf_ctrl_lock, lease_flags);
++#endif
+ }
+ EXPORT_SYMBOL_GPL(set_gear_uclamp_max);
++
++#include "mtk_perf_ctrl_impl.inc"
++#include "mtk_perf_task_ctrl_impl.inc"
+ #endif
+ 
+ int init_opp_cap_info(struct proc_dir_entry *dir)
+@@ -1913,7 +1978,7 @@
+ 		cpu_util = flt_get_cpu_util_hook(cpu);
+ 
+ 		umax = rq->uclamp[UCLAMP_MAX].value;
+-		if (gu_ctrl)
++		if (READ_ONCE(gu_ctrl))
+ 			umax = min_t(unsigned long, umax, get_cpu_gear_uclamp_max(cpu));
+ 		ret_util = min_t(unsigned long,
+ 			cpu_util, umax * am >> SCHED_CAPACITY_SHIFT);
+diff --git a/drivers/misc/mediatek/sched/sugov/cpufreq_sugov_main.c b/drivers/misc/mediatek/sched/sugov/cpufreq_sugov_main.c
+--- a/drivers/misc/mediatek/sched/sugov/cpufreq_sugov_main.c
++++ b/drivers/misc/mediatek/sched/sugov/cpufreq_sugov_main.c
+@@ -224,7 +224,7 @@
+ 	}
+ 
+ 	cu_ht = &((struct mtk_task *) curr_task->android_vendor_data1)->cu_hint;
+-	if (!cu_ht->hint) {
++	if (!READ_ONCE(cu_ht->hint)) {
+ 		rcu_read_unlock();
+ 		return -1;
+ 	}
+@@ -322,9 +322,9 @@
+ 			WRITE_ONCE(sugov_data_ptr->uclamp[UCLAMP_MIN], umin);
+ 			WRITE_ONCE(sugov_data_ptr->uclamp[UCLAMP_MAX], umax);
+ 			p = NULL;
+-			if (cu_ctrl && curr_clamp(rq, &util) == 0)
++			if (READ_ONCE(cu_ctrl) && curr_clamp(rq, &util) == 0)
+ 				goto skip_rq_uclamp;
+-			else if (gu_ctrl) {
++			else if (READ_ONCE(gu_ctrl)) {
+ 				unsigned long umax_with_gear;
+ 
+ 				umax_with_gear = min_t(unsigned long,
+@@ -646,7 +646,7 @@
+ 
+ 		umin = rq->uclamp[UCLAMP_MIN].value;
+ 		umax = rq->uclamp[UCLAMP_MAX].value;
+-		if (gu_ctrl)
++		if (READ_ONCE(gu_ctrl))
+ 			umax = min_t(unsigned long,
+ 				umax, get_cpu_gear_uclamp_max(sg_cpu->cpu));
+ 		trace_sugov_ext_util(sg_cpu->cpu, sg_cpu->util, umin, umax);
+@@ -706,7 +706,7 @@
+ 
+ 			umin = rq->uclamp[UCLAMP_MIN].value;
+ 			umax = rq->uclamp[UCLAMP_MAX].value;
+-			if (gu_ctrl)
++			if (READ_ONCE(gu_ctrl))
+ 				umax = min_t(unsigned long,
+ 					umax, get_cpu_gear_uclamp_max(j));
+ 			trace_sugov_ext_util(j, idle ? 0 : j_util, umin, umax);
+diff --git a/drivers/misc/mediatek/sched/eas/vip.c b/drivers/misc/mediatek/sched/eas/vip.c
+--- a/drivers/misc/mediatek/sched/eas/vip.c
++++ b/drivers/misc/mediatek/sched/eas/vip.c
+@@ -349,17 +349,21 @@
+ }
+ 
+ /* basic vip interace */
++#include "../sugov/mtk_perf_ctrl.h"
++
+ void set_task_basic_vip(int pid)
+ {
+ 	struct task_struct *p;
+-	struct vip_task_struct *vts;
+ 
+ 	rcu_read_lock();
+ 	p = find_task_by_vpid(pid);
+ 	if (p) {
+ 		get_task_struct(p);
+-		vts = &((struct mtk_task *) p->android_vendor_data1)->vip_task;
+-		vts->basic_vip = true;
++#if IS_ENABLED(CONFIG_MTK_PERF_CTRL_LEASE)
++		mtk_perf_task_legacy_vip(p, true);
++#else
++		WRITE_ONCE(((struct mtk_task *)p->android_vendor_data1)->vip_task.basic_vip, true);
++#endif
+ 		put_task_struct(p);
+ 	}
+ 	rcu_read_unlock();
+@@ -369,14 +373,16 @@
+ void unset_task_basic_vip(int pid)
+ {
+ 	struct task_struct *p;
+-	struct vip_task_struct *vts;
+ 
+ 	rcu_read_lock();
+ 	p = find_task_by_vpid(pid);
+ 	if (p) {
+ 		get_task_struct(p);
+-		vts = &((struct mtk_task *) p->android_vendor_data1)->vip_task;
+-		vts->basic_vip = false;
++#if IS_ENABLED(CONFIG_MTK_PERF_CTRL_LEASE)
++		mtk_perf_task_legacy_vip(p, false);
++#else
++		WRITE_ONCE(((struct mtk_task *)p->android_vendor_data1)->vip_task.basic_vip, false);
++#endif
+ 		put_task_struct(p);
+ 	}
+ 	rcu_read_unlock();
+@@ -388,7 +394,7 @@
+ {
+ 	struct vip_task_struct *vts = &((struct mtk_task *) p->android_vendor_data1)->vip_task;
+ 
+-	return vts->basic_vip;
++	return READ_ONCE(vts->basic_vip);
+ }
+ 
+ inline int get_vip_task_prio(struct task_struct *p)
+diff --git a/drivers/misc/mediatek/sched/sugov/mtk_perf_ctrl.h b/drivers/misc/mediatek/sched/sugov/mtk_perf_ctrl.h
+new file mode 100644
+--- /dev/null
++++ b/drivers/misc/mediatek/sched/sugov/mtk_perf_ctrl.h
+@@ -0,0 +1,34 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#ifndef _MTK_PERF_CTRL_H
++#define _MTK_PERF_CTRL_H
++
++#include <linux/types.h>
++
++/* Built-in sugov owns the state; the client owns this opaque handle's lifetime.
++ * acquire/release are sleepable. Updates and legacy preemption are IRQ-safe.
++ * Client must join its users before release. There is deliberately no stub API.
++ */
++struct mtk_perf_ctrl_lease;
++int mtk_perf_ctrl_acquire(unsigned int gears, const int *limits, int wl,
++	struct mtk_perf_ctrl_lease **out);
++int mtk_perf_ctrl_set_gear(struct mtk_perf_ctrl_lease *lease, unsigned int gear,
++	int value);
++bool mtk_perf_ctrl_is_live(struct mtk_perf_ctrl_lease *lease);
++void mtk_perf_ctrl_release(struct mtk_perf_ctrl_lease *lease);
++
++/* Stable task objects, never cached numeric PIDs. One frame owns the native
++ * basic-VIP/hint overlay; any legacy field writer atomically preempts it.
++ */
++struct task_struct;
++struct mtk_perf_task_lease;
++int mtk_perf_task_acquire(struct task_struct *task, bool vip,
++	struct mtk_perf_task_lease **out);
++int mtk_perf_task_set_hint(struct mtk_perf_task_lease *lease, int hint);
++bool mtk_perf_task_is_live(struct mtk_perf_task_lease *lease);
++void mtk_perf_task_release(struct mtk_perf_task_lease *lease);
++void mtk_perf_task_legacy_hint(struct task_struct *task, int hint);
++#if IS_ENABLED(CONFIG_MTK_SCHED_VIP_TASK)
++void mtk_perf_task_legacy_vip(struct task_struct *task, bool vip);
++#endif
++
++#endif
+diff --git a/drivers/misc/mediatek/sched/sugov/mtk_perf_ctrl_impl.inc b/drivers/misc/mediatek/sched/sugov/mtk_perf_ctrl_impl.inc
+new file mode 100644
+--- /dev/null
++++ b/drivers/misc/mediatek/sched/sugov/mtk_perf_ctrl_impl.inc
+@@ -0,0 +1,130 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/* Embedded after gear_uclamp_max/set_gear_uclamp_max in the native TU. No
++ * scheduler emulation: these are the real gu_ctrl/cu_ctrl/WL/gear controls.
++ */
++#if IS_ENABLED(CONFIG_MTK_PERF_CTRL_LEASE)
++static void mtk_perf_ctrl_restore_locked(struct mtk_perf_ctrl_lease *lease)
++{
++	unsigned int i;
++
++	lockdep_assert_held(&mtk_perf_ctrl_lock);
++	for (i = 0; i < lease->gears; i++)
++		WRITE_ONCE(gear_uclamp_max[i], lease->saved_max[i]);
++	WRITE_ONCE(wl_type_manual, lease->saved_wl);
++	WRITE_ONCE(cu_ctrl, lease->saved_cu);
++	WRITE_ONCE(gu_ctrl, lease->saved_gu);
++}
++
++static void mtk_perf_ctrl_preempt_locked(void)
++{
++	lockdep_assert_held(&mtk_perf_ctrl_lock);
++	/* A legacy writer wins. Withdraw the complete temporary overlay BEFORE
++	 * its write, atomically with respect to all other writers. Even a write
++	 * of the same numeric value revokes ownership; there is no ABA compare.
++	 * The client retains/frees its now-stale handle, never the native writer.
++	 */
++	if (mtk_perf_ctrl_owner) {
++		mtk_perf_ctrl_restore_locked(mtk_perf_ctrl_owner);
++		mtk_perf_ctrl_owner = NULL;
++	}
++}
++
++int mtk_perf_ctrl_acquire(unsigned int gears, const int *limits, int wl,
++	struct mtk_perf_ctrl_lease **out)
++{
++	struct mtk_perf_ctrl_lease *lease;
++	unsigned long flags;
++	unsigned int i;
++	int ret = 0;
++
++	if (!out)
++		return -EINVAL;
++	*out = NULL;
++	if (!limits || !gears || gears > ARRAY_SIZE(gear_uclamp_max))
++		return -EINVAL;
++	for (i = 0; i < gears; i++)
++		if (limits[i] < 0 || limits[i] > SCHED_CAPACITY_SCALE)
++			return -ERANGE;
++	/* Match the native setter's workload selection semantics. */
++	if (wl < 0 || wl >= nr_wl_type || !is_wl_support())
++		wl = -1;
++	lease = kzalloc(sizeof(*lease), GFP_KERNEL);
++	if (!lease)
++		return -ENOMEM;
++	lease->gears = gears;
++
++	raw_spin_lock_irqsave(&mtk_perf_ctrl_lock, flags);
++	if (gears != pd_count)
++		ret = -ENODEV;
++	else if (mtk_perf_ctrl_owner)
++		ret = -EBUSY;
++	if (!ret) {
++		lease->saved_gu = gu_ctrl;
++		lease->saved_cu = cu_ctrl;
++		lease->saved_wl = wl_type_manual;
++		for (i = 0; i < gears; i++) {
++			lease->saved_max[i] = gear_uclamp_max[i];
++			WRITE_ONCE(gear_uclamp_max[i], limits[i]);
++		}
++		WRITE_ONCE(wl_type_manual, wl);
++		WRITE_ONCE(cu_ctrl, true);
++		WRITE_ONCE(gu_ctrl, true);
++		mtk_perf_ctrl_owner = lease;
++	}
++	raw_spin_unlock_irqrestore(&mtk_perf_ctrl_lock, flags);
++	if (ret)
++		kfree(lease);
++	else
++		*out = lease;
++	return ret;
++}
++EXPORT_SYMBOL_GPL(mtk_perf_ctrl_acquire);
++
++int mtk_perf_ctrl_set_gear(struct mtk_perf_ctrl_lease *lease, unsigned int gear,
++	int value)
++{
++	unsigned long flags;
++	int ret = 0;
++
++	if (!lease || gear >= lease->gears)
++		return -EINVAL;
++	if (value < 0 || value > SCHED_CAPACITY_SCALE)
++		return -ERANGE;
++	raw_spin_lock_irqsave(&mtk_perf_ctrl_lock, flags);
++	if (mtk_perf_ctrl_owner != lease)
++		ret = -ESTALE;
++	else
++		WRITE_ONCE(gear_uclamp_max[gear], value);
++	raw_spin_unlock_irqrestore(&mtk_perf_ctrl_lock, flags);
++	return ret;
++}
++EXPORT_SYMBOL_GPL(mtk_perf_ctrl_set_gear);
++
++bool mtk_perf_ctrl_is_live(struct mtk_perf_ctrl_lease *lease)
++{
++	unsigned long flags;
++	bool live;
++
++	raw_spin_lock_irqsave(&mtk_perf_ctrl_lock, flags);
++	live = lease && mtk_perf_ctrl_owner == lease;
++	raw_spin_unlock_irqrestore(&mtk_perf_ctrl_lock, flags);
++	return live;
++}
++EXPORT_SYMBOL_GPL(mtk_perf_ctrl_is_live);
++
++void mtk_perf_ctrl_release(struct mtk_perf_ctrl_lease *lease)
++{
++	unsigned long flags;
++
++	if (!lease)
++		return;
++	raw_spin_lock_irqsave(&mtk_perf_ctrl_lock, flags);
++	if (mtk_perf_ctrl_owner == lease) {
++		mtk_perf_ctrl_restore_locked(lease);
++		mtk_perf_ctrl_owner = NULL;
++	}
++	raw_spin_unlock_irqrestore(&mtk_perf_ctrl_lock, flags);
++	kfree(lease);
++}
++EXPORT_SYMBOL_GPL(mtk_perf_ctrl_release);
++#endif
+diff --git a/drivers/misc/mediatek/sched/sugov/mtk_perf_ctrl_state.inc b/drivers/misc/mediatek/sched/sugov/mtk_perf_ctrl_state.inc
+new file mode 100644
+--- /dev/null
++++ b/drivers/misc/mediatek/sched/sugov/mtk_perf_ctrl_state.inc
+@@ -0,0 +1,19 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/* Embedded in nonlinear_opp_cap.c, before its first scalar setter. The actual
++ * native controls remain in their original TU, with their original defaults.
++ */
++#if IS_ENABLED(CONFIG_MTK_PERF_CTRL_LEASE)
++#include <linux/slab.h>
++#include <linux/spinlock.h>
++#include "mtk_perf_ctrl.h"
++
++struct mtk_perf_ctrl_lease {
++	unsigned int gears;
++	bool saved_gu, saved_cu;
++	int saved_wl;
++	int saved_max[MAX_NR_CPUS];
++};
++static DEFINE_RAW_SPINLOCK(mtk_perf_ctrl_lock);
++static struct mtk_perf_ctrl_lease *mtk_perf_ctrl_owner;
++static void mtk_perf_ctrl_preempt_locked(void);
++#endif
+diff --git a/drivers/misc/mediatek/sched/sugov/mtk_perf_task_ctrl_impl.inc b/drivers/misc/mediatek/sched/sugov/mtk_perf_task_ctrl_impl.inc
+new file mode 100644
+--- /dev/null
++++ b/drivers/misc/mediatek/sched/sugov/mtk_perf_task_ctrl_impl.inc
+@@ -0,0 +1,179 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/* Native basic-VIP/current-hint ownership, embedded in nonlinear_opp_cap.c.
++ * No task_struct or vendor-data layout change; all registry access is locked.
++ * This does NOT arbitrate the scheduler's separate uclamp_req[] fields.
++ */
++#if IS_ENABLED(CONFIG_MTK_PERF_CTRL_LEASE)
++#include <linux/hashtable.h>
++#include <linux/sched/task.h>
++
++struct mtk_perf_task_lease {
++	struct hlist_node node;
++	struct task_struct *task;
++	int saved_hint;
++	bool saved_vip;
++};
++static DEFINE_HASHTABLE(mtk_perf_task_leases, 6);
++static DEFINE_RAW_SPINLOCK(mtk_perf_task_lock);
++
++static struct mtk_perf_task_lease *mtk_perf_task_find_locked(struct task_struct *task)
++{
++	struct mtk_perf_task_lease *lease;
++
++	lockdep_assert_held(&mtk_perf_task_lock);
++	hash_for_each_possible(mtk_perf_task_leases, lease, node, (unsigned long)task)
++		if (lease->task == task)
++			return lease;
++	return NULL;
++}
++
++static void mtk_perf_task_restore_locked(struct mtk_perf_task_lease *lease)
++{
++	struct mtk_task *mt = (struct mtk_task *)lease->task->android_vendor_data1;
++
++	lockdep_assert_held(&mtk_perf_task_lock);
++	/* No policy update is meaningful once the retained task has exited. */
++	if (!pid_alive(lease->task))
++		return;
++	WRITE_ONCE(mt->cu_hint.hint, lease->saved_hint);
++#if IS_ENABLED(CONFIG_MTK_SCHED_VIP_TASK)
++	WRITE_ONCE(mt->vip_task.basic_vip, lease->saved_vip);
++#endif
++}
++
++static void mtk_perf_task_preempt_locked(struct task_struct *task)
++{
++	struct mtk_perf_task_lease *lease = mtk_perf_task_find_locked(task);
++
++	if (lease) {
++		mtk_perf_task_restore_locked(lease);
++		hash_del(&lease->node);
++	}
++	/* Caller owns the reference and frees the displaced descriptor later. */
++}
++
++int mtk_perf_task_acquire(struct task_struct *task, bool vip,
++	struct mtk_perf_task_lease **out)
++{
++	struct mtk_perf_task_lease *lease;
++	struct mtk_task *mt;
++	unsigned long flags;
++	int ret = 0;
++
++	if (!out)
++		return -EINVAL;
++	*out = NULL;
++	if (!task || !pid_alive(task))
++		return -ESRCH;
++	if (READ_ONCE(task->flags) & PF_KTHREAD)
++		return -EPERM;
++	if (vip && !IS_ENABLED(CONFIG_MTK_SCHED_VIP_TASK))
++		return -EOPNOTSUPP;
++	lease = kzalloc(sizeof(*lease), GFP_KERNEL);
++	if (!lease)
++		return -ENOMEM;
++	get_task_struct(task);
++	lease->task = task;
++	mt = (struct mtk_task *)task->android_vendor_data1;
++	raw_spin_lock_irqsave(&mtk_perf_task_lock, flags);
++	if (!pid_alive(task))
++		ret = -ESRCH;
++	else if (mtk_perf_task_find_locked(task))
++		ret = -EBUSY;
++	if (!ret) {
++		lease->saved_hint = READ_ONCE(mt->cu_hint.hint);
++#if IS_ENABLED(CONFIG_MTK_SCHED_VIP_TASK)
++		lease->saved_vip = READ_ONCE(mt->vip_task.basic_vip);
++		if (vip)
++			WRITE_ONCE(mt->vip_task.basic_vip, true);
++#endif
++		hash_add(mtk_perf_task_leases, &lease->node, (unsigned long)task);
++	}
++	raw_spin_unlock_irqrestore(&mtk_perf_task_lock, flags);
++	if (ret) {
++		put_task_struct(task);
++		kfree(lease);
++	} else {
++		*out = lease;
++	}
++	return ret;
++}
++EXPORT_SYMBOL_GPL(mtk_perf_task_acquire);
++
++int mtk_perf_task_set_hint(struct mtk_perf_task_lease *lease, int hint)
++{
++	unsigned long flags;
++	int ret = 0;
++
++	if (!lease || (hint != 0 && hint != 1))
++		return -EINVAL;
++	raw_spin_lock_irqsave(&mtk_perf_task_lock, flags);
++	if (hlist_unhashed(&lease->node))
++		ret = -ESTALE;
++	else if (!pid_alive(lease->task))
++		ret = -ESRCH;
++	else
++		WRITE_ONCE(((struct mtk_task *)lease->task->android_vendor_data1)->cu_hint.hint, hint);
++	raw_spin_unlock_irqrestore(&mtk_perf_task_lock, flags);
++	return ret;
++}
++EXPORT_SYMBOL_GPL(mtk_perf_task_set_hint);
++
++bool mtk_perf_task_is_live(struct mtk_perf_task_lease *lease)
++{
++	unsigned long flags;
++	bool live;
++
++	if (!lease)
++		return false;
++	raw_spin_lock_irqsave(&mtk_perf_task_lock, flags);
++	live = !hlist_unhashed(&lease->node) && pid_alive(lease->task);
++	raw_spin_unlock_irqrestore(&mtk_perf_task_lock, flags);
++	return live;
++}
++EXPORT_SYMBOL_GPL(mtk_perf_task_is_live);
++
++void mtk_perf_task_release(struct mtk_perf_task_lease *lease)
++{
++	unsigned long flags;
++
++	if (!lease)
++		return;
++	raw_spin_lock_irqsave(&mtk_perf_task_lock, flags);
++	if (!hlist_unhashed(&lease->node)) {
++		mtk_perf_task_restore_locked(lease);
++		hash_del(&lease->node);
++	}
++	raw_spin_unlock_irqrestore(&mtk_perf_task_lock, flags);
++	put_task_struct(lease->task);
++	kfree(lease);
++}
++EXPORT_SYMBOL_GPL(mtk_perf_task_release);
++
++void mtk_perf_task_legacy_hint(struct task_struct *task, int hint)
++{
++	unsigned long flags;
++
++	/* Legacy entry already owns a task ref. Preemption and the write are
++	 * indivisible even for identical values; no PID relookup or sleeping.
++	 */
++	raw_spin_lock_irqsave(&mtk_perf_task_lock, flags);
++	mtk_perf_task_preempt_locked(task);
++	WRITE_ONCE(((struct mtk_task *)task->android_vendor_data1)->cu_hint.hint, hint);
++	raw_spin_unlock_irqrestore(&mtk_perf_task_lock, flags);
++}
++EXPORT_SYMBOL_GPL(mtk_perf_task_legacy_hint);
++
++#if IS_ENABLED(CONFIG_MTK_SCHED_VIP_TASK)
++void mtk_perf_task_legacy_vip(struct task_struct *task, bool vip)
++{
++	unsigned long flags;
++
++	raw_spin_lock_irqsave(&mtk_perf_task_lock, flags);
++	mtk_perf_task_preempt_locked(task);
++	WRITE_ONCE(((struct mtk_task *)task->android_vendor_data1)->vip_task.basic_vip, vip);
++	raw_spin_unlock_irqrestore(&mtk_perf_task_lock, flags);
++}
++EXPORT_SYMBOL_GPL(mtk_perf_task_legacy_vip);
++#endif
++#endif

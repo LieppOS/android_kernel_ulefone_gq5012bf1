@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: GPL-2.0
+# Included ONLY by the pinned native performance Kconfig overlay. Native
+# MTK_FPSGO_V3, MTK_PERFORMANCE_MODULE and MTK_C2PS already have real owners.
+# Do not include the standalone hidden-symbol Kconfig in the device tree.
+menuconfig LIEPPOS_PERFORMANCE
+	tristate "LieppOS maintained FPSGO cohort (experimental, permanent lifetime)"
+	depends on ARM64 && SMP && CPU_FREQ && PROC_FS && SYSFS
+	depends on UCLAMP_TASK && ANDROID_VENDOR_HOOKS
+	depends on MTK_SCHEDULER && NONLINEAR_FREQ_CTL && MTK_OPP_CAP_INFO
+	depends on MTK_PERF_CTRL_LEASE && MTK_SCHED_GROUP_AWARE && MTK_CPUQOS_V3
+	depends on m
+	select MTK_FPSGO_V3
+	select MTK_PERFORMANCE_MODULE
+	help
+	  Replace the complete native FPSGO/ioctl/PowerHAL cohort, not selected
+	  translation units or foreign headers. Existing touch boost, FRS,
+	  game and load tracker source owners remain intact. Android restricted
+	  hooks cannot be unregistered: this framework pins its module after
+	  commit and is not unloadable. Experimental/HOLD; no hardware proof.
+
+config LIEPPOS_PERFORMANCE_TARGET_C
+	bool
+	default y if LIEPPOS_PERFORMANCE != n
+
+config MTK_PERF_CTRL_LEASE
+	bool "Native sugov, task-field and scheduler clamp leases"
+	depends on NONLINEAR_FREQ_CTL && MTK_OPP_CAP_INFO && MTK_SCHEDULER
+	depends on UCLAMP_TASK
+	default n
+	help
+	  Requires reviewed native-control-lease.patch AND
+	  scheduler-uclamp-lease.patch in the pinned kernel.
+	  Native legacy setters atomically preempt temporary sugov and task
+	  VIP/hint leases. Stable task references, not cached PID numbers,
+	  identify task leases. A displaced client cannot restore over a newer
+	  writer. The scheduler owns its clamp transaction under pi/rq locks;
+	  ordinary sched_setattr writers revoke even an identical-value request.
+	  No stub provider or generic fallback exists.
+
+config LIEPPOS_C2PS
+	tristate "LieppOS maintained native C2PS cohort (experimental/HOLD)"
+	depends on LIEPPOS_PERFORMANCE && MTK_C2PS
+	depends on NONLINEAR_FREQ_CTL && MTK_SCHEDULER && MTK_PERF_CTRL_LEASE
+	depends on EXPERT && m
+	default n
+	help
+	  Build authentic MT6878 C2PS and its matching ioctl source as one
+	  cohort. Session/task/global-control ownership and real device-kernel
+	  validation remain incomplete. Do not enable a competing camera-tree
+	  C2PS implementation. This provider has permanent callback lifetime;
+	  it is not a deployable or unload-safe subsystem certification.

@@ -1,0 +1,4 @@
+mtk_c2ps_common_objs += \
+	src/c2ps_common.o \
+	src/c2ps_task.o \
+	src/c2ps_sysfs.o

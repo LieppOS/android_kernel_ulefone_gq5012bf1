@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: GPL-2.0
+# Authentic ioctl providers and frame governors in one provider-aware modpost.
+perf := public/drivers/misc/mediatek/performance
+# Default platform-header root for the trimmed generic delivery. An explicit
+# command-line DEVICE_MODULES_PATH may select the matching authenticated device
+# source, not a replacement FPSGO implementation. Owned FPSGO roots use $(src).
+ifeq ($(CONFIG_LIEPPOS_PERFORMANCE_TARGET_C),y)
+# Native overlay is scoped to this very kernel, never another prepared target.
+override DEVICE_MODULES_PATH := $(srctree)
+else
+DEVICE_MODULES_PATH := $(src)/public
+endif
+export DEVICE_MODULES_PATH
+# Platform includes use their full drivers/... namespace. Owned FPSGO protocol
+# includes are source-relative, not selected by search-path precedence.
+subdir-ccflags-y += -I$(DEVICE_MODULES_PATH)
+performance_source := $(if $(filter /%,$(src)),$(src),$(srctree)/$(src))
+subdir-ccflags-y += -I$(performance_source)/$(perf)/perf_ioctl -I$(performance_source)/$(perf)/include
+subdir-ccflags-y += -I$(performance_source)/$(perf)/powerhal_cpu_ctrl
+subdir-ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/sched
+subdir-ccflags-y += -I$(srctree)/kernel
+subdir-ccflags-y += -DCONFIG_MTK_FPSGO_V3=1
+obj-$(CONFIG_LIEPPOS_PERFORMANCE) += mtk_perf_ioctl.o mtk_perf_ioctl_magt.o mtk_ioctl_powerhal.o
+mtk_perf_ioctl-y := $(perf)/perf_ioctl/perf_ioctl.o
+mtk_perf_ioctl_magt-y := $(perf)/perf_ioctl/perf_ioctl_magt.o
+mtk_ioctl_powerhal-y := $(perf)/perf_ioctl/ioctl_powerhal.o
+obj-$(CONFIG_LIEPPOS_PERFORMANCE) += $(perf)/powerhal_cpu_ctrl/
+obj-$(CONFIG_LIEPPOS_PERFORMANCE) += $(perf)/fpsgo_v3/
+# The former source/ private-wrapper module is NOT part of the public source
+# publication. Its wrapper declared a Proprietary module-license string and
+# carried an explicit MediaTek no-redistribution notice. See
+# PUBLICATION-NOTICE.md.
+# Explicitly opt-in native C2PS cohort; never silently replace a camera owner.
+obj-$(CONFIG_LIEPPOS_C2PS) += public/drivers/misc/mediatek/c2ps/
+obj-$(CONFIG_LIEPPOS_C2PS) += public/drivers/misc/mediatek/c2ps_ioctl/
