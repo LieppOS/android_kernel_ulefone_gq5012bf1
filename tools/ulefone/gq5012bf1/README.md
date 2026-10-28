@@ -80,7 +80,43 @@ two Hynitron export lines.
 ## Reproducibility caveats
 
 The build is source-coherent only as a combined tree. The two module mirror
-repositories are provenance mirrors, not standalone build roots. External
-`gpu/`, `connectivity/`, `mtkcam/` and `met_drv_v3/` trees are not imported; the
-six `mtk_ccuv` symbol lines stand in for the reference mixed-tree inputs and do
-not contain `mtkcam` source.
+repositories are provenance mirrors, not standalone build roots. The six
+`mtk_ccuv` symbol lines in `configs/mixed-vmlinux.symvers.extra` remain the
+in-tree module input, so the C48 in-tree result does not depend on the C49
+vendor modules below.
+
+## MediaTek vendor modules (C49)
+
+`vendor/mediatek/kernel_modules/{gpu,connectivity,mtkcam,met}` holds a tracked
+source snapshot of the external MediaTek module trees. Per-file SHA-256,
+exclusions, source pins and the intentionally unresolved symlinks are recorded
+in `vendor/mediatek/kernel_modules/SOURCE-MANIFEST.json`.
+
+```sh
+# after build-kernel.sh and build-modules.sh
+OUT=/path/to/out TOOLCHAIN_DIR=/path/to/clang-r487747c \
+    ./tools/ulefone/gq5012bf1/build-vendor-modules.py
+```
+
+`build-vendor-modules.py` builds each group with
+`M=vendor/mediatek/kernel_modules/<group>` into `$OUT` in the C29 reference
+provider order and `KBUILD_EXTRA_SYMBOLS` chain, and writes
+`vendor-build-receipt.json` (hashes, vermagic, depends, undefined symbols) to
+`$WORK_DIR` (default: the parent of `$OUT`). Two layout adaptations are made on
+the command line or in the output tree, never in the source:
+
+- `MTK_ISP_DRIVER_PATH` is overridden for `imgsensor`, whose Kbuild assumes
+  `vendor/` is a sibling of `DEVICE_MODULES_PATH`.
+- For `M=` directories with only a `Kbuild` file (`fmradio/Build/connac2x`),
+  the source `Kbuild` is linked into `$OUT/<M>/`, because Linux 6.1
+  `scripts/Makefile.modpost` resolves `$(src)/Kbuild` relative to the objtree.
+
+Not built: `wlan/core/gen4m` (its `mgmt/tkip_mic.c` carries a no-redistribution
+notice and is excluded from the snapshot).
+
+`import-vendor-modules.py --source-root <dir>` regenerates the snapshot from
+the source-owning repositories (tracked files only, read-only Git queries) and
+refuses to finish if any symlink dangles other than the four recorded optional
+components (`gps/gps_mcudl` for GPS v060/v061 and `wlan/core/gen4m_ext`).
+
+`verify-build.sh` ignores `$OUT/vendor/` when counting the 702 in-tree modules.

@@ -107,7 +107,9 @@ while IFS=$'\t' read -r rel reason; do
 	fi
 done < "$exclusions"
 
-mapfile -t modules < <(cd "$out" && find . -name '*.ko' -type f | sed 's#^\./##' | sort)
+# vendor/ holds the separately built MediaTek vendor modules (C49,
+# build-vendor-modules.py); they are not part of the in-tree module set.
+mapfile -t modules < <(cd "$out" && find . -path ./vendor -prune -o -name '*.ko' -type f -print | sed 's#^\./##' | sort)
 count=${#modules[@]}
 if [[ $count -eq $expected_modules ]]; then
 	printf 'OK       in-tree module count: %d\n' "$count"
@@ -158,7 +160,7 @@ if [[ -n $ref ]]; then
 		exit 2
 	fi
 	(cd "$ref" && find . -name '*.ko' -type f | sort) > /tmp/c48-ref-modules.$$
-	(cd "$out" && find . -name '*.ko' -type f | sort) > /tmp/c48-out-modules.$$
+	(cd "$out" && find . -path ./vendor -prune -o -name '*.ko' -type f -print | sort) > /tmp/c48-out-modules.$$
 	ref_only=/tmp/c48-ref-only.$$
 	comm -23 /tmp/c48-ref-modules.$$ /tmp/c48-out-modules.$$ > "$ref_only"
 	printf 'reference-only modules:\n'

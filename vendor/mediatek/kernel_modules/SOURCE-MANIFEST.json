@@ -244,6 +244,186 @@
      "size": 397
     },
     {
+     "kind": "licensed",
+     "path": "bt/mt66xx/btmtk_buffer_mode.c",
+     "sha256": "696ac284fcc4329abebfbb0d734b5ececb682b85e2b8434f67d23634d742b5f4",
+     "size": 8551
+    },
+    {
+     "kind": "licensed",
+     "path": "bt/mt66xx/btmtk_chip_reset.c",
+     "sha256": "63044341e741fbfed570b9274d5b74807599ed36f970b2febc5c5bf94c4dbc5f",
+     "size": 3453
+    },
+    {
+     "kind": "licensed",
+     "path": "bt/mt66xx/btmtk_fw_log.c",
+     "sha256": "710fc91f7f902f6085700b9c7afcfa30ca7988eaa065ef000810f5f5e08ae7e4",
+     "size": 21575
+    },
+    {
+     "kind": "licensed",
+     "path": "bt/mt66xx/btmtk_main.c",
+     "sha256": "0137a5e66a386888c233b645762c8ede109a5964bad8e4bc143f6677662a7241",
+     "size": 114730
+    },
+    {
+     "kind": "licensed",
+     "path": "bt/mt66xx/btmtk_woble.c",
+     "sha256": "3d7b6a950c28978228f44c413f8b095bacdf1170ba2baebacad56e769c9799c3",
+     "size": 30124
+    },
+    {
+     "kind": "licensed",
+     "path": "bt/mt66xx/include/btif/btmtk_beif.h",
+     "sha256": "21a1d6fc468eb0ee2a6cd700e05bc5bf47b0ddd643fb56baa9f27cece65e717b",
+     "size": 1502
+    },
+    {
+     "kind": "licensed",
+     "path": "bt/mt66xx/include/btif/btmtk_beif_plat.h",
+     "sha256": "75a225ceb5a89778243670f7d562f6ebd47baace5d99f8df70f07d4ac05d1974",
+     "size": 1319
+    },
+    {
+     "kind": "licensed",
+     "path": "bt/mt66xx/include/btif/btmtk_btif.h",
+     "sha256": "0ecbbb51f741c9cb636eedaf795eae36759e8e5538bdf0d2a4ccc2125a2547cc",
+     "size": 14521
+    },
+    {
+     "kind": "licensed",
+     "path": "bt/mt66xx/include/btif/btmtk_dbg_tp_evt.h",
+     "sha256": "1f2455c6e0077644b61fee66f1bdd3b51b526d884120a3fc6f2846c63afe74b7",
+     "size": 2536
+    },
+    {
+     "kind": "licensed",
+     "path": "bt/mt66xx/include/btif/btmtk_dbg_tp_evt_if.h",
+     "sha256": "bb36fe2a2d15683374478f3602e1c8b836ae6826ff173391f3a9794c3535f73a",
+     "size": 767
+    },
+    {
+     "kind": "licensed",
+     "path": "bt/mt66xx/include/btif/platform_6877.h",
+     "sha256": "4a053ecec4adb222981d195176744626fdaf76a86db6c6e220dcddf2e6376f85",
+     "size": 38851
+    },
+    {
+     "kind": "licensed",
+     "path": "bt/mt66xx/include/btif/platform_6878.h",
+     "sha256": "436018f24268f8f0dbf4af99cd0d5eaa0578782bd3e51877f1fc7c2e4ae47894",
+     "size": 47165
+    },
+    {
+     "kind": "licensed",
+     "path": "bt/mt66xx/include/btif/platform_6879.h",
+     "sha256": "3a1d611d7642cc1ae3ae7af53717d1081a8a206737b9590a748d8d072a55949b",
+     "size": 41329
+    },
+    {
+     "kind": "licensed",
+     "path": "bt/mt66xx/include/btif/platform_6885.h",
+     "sha256": "06833d2be35aaff5651cac394a90b00a5dba4a26c7874c6aa8d6b526c1424f91",
+     "size": 37114
+    },
+    {
+     "kind": "licensed",
+     "path": "bt/mt66xx/include/btif/platform_6886.h",
+     "sha256": "0b56efc11071546d041373912c3cbcf0c5f59c740248a329ccbf1992f39c0532",
+     "size": 45147
+    },
+    {
+     "kind": "licensed",
+     "path": "bt/mt66xx/include/btif/platform_6893.h",
+     "sha256": "e0c64ac09ddf6dad1c8f99d6553360038c2e31a960666fd63d6ddd52ee7a27de",
+     "size": 37127
+    },
+    {
+     "kind": "licensed",
+     "path": "bt/mt66xx/include/btif/platform_6895.h",
+     "sha256": "b0cc397f1777adc224616109ef6d85b4693c02033267a67b02caafeb5089eb67",
+     "size": 41330
+    },
+    {
+     "kind": "licensed",
+     "path": "bt/mt66xx/include/btif/platform_6897.h",
+     "sha256": "f71d58532d76fcaaec1eb721ab7c658b520ce2f751aae6df17f3732793cf50bd",
+     "size": 45728
+    },
+    {
+     "kind": "licensed",
+     "path": "bt/mt66xx/include/btif/platform_6983.h",
+     "sha256": "9870974f48573dd811ef556bb64f780ae03ec24893aaf61f400e6d5ec67e50b9",
+     "size": 45823
+    },
+    {
+     "kind": "licensed",
+     "path": "bt/mt66xx/include/btif/platform_base.h",
+     "sha256": "b38f70355d8baa8bcbdf502b88c7c79ff0ff4f8b9fee907fcb8e6e11712bcaaa",
+     "size": 13995
+    },
+    {
+     "kind": "licensed",
+     "path": "bt/mt66xx/include/btmtk_buffer_mode.h",
+     "sha256": "08294ccc235e5425b50912740b3414bfe3e03aae055d0206411d82cf4b76319c",
+     "size": 2639
+    },
+    {
+     "kind": "licensed",
+     "path": "bt/mt66xx/include/btmtk_chip_if.h",
+     "sha256": "aa2ed3d1547ff10def18930437e1a166695e3b0f0f1e699a19f104b09b822e96",
+     "size": 1114
+    },
+    {
+     "kind": "licensed",
+     "path": "bt/mt66xx/include/btmtk_define.h",
+     "sha256": "1f25672f8e4f23ae7b9ea8340db704a6c0112a8fcbe86a07c775752143c7f186",
+     "size": 9406
+    },
+    {
+     "kind": "licensed",
+     "path": "bt/mt66xx/include/btmtk_drv.h",
+     "sha256": "8b81c797abcd55138dda9a8f82e9caa24923d8d0b52056302e3320c501c72fef",
+     "size": 4017
+    },
+    {
+     "kind": "licensed",
+     "path": "bt/mt66xx/include/btmtk_fw_log.h",
+     "sha256": "6ae32b208fca3ca7b4090d9bc58f37430ac6e39f5d5af486d84c33a6559e8ad7",
+     "size": 1742
+    },
+    {
+     "kind": "licensed",
+     "path": "bt/mt66xx/include/btmtk_main.h",
+     "sha256": "6c61c5bec1d13827c6162d282c84b79f0691db510508c4f1990b9ba0fbd6314f",
+     "size": 18238
+    },
+    {
+     "kind": "licensed",
+     "path": "bt/mt66xx/include/btmtk_woble.h",
+     "sha256": "fc0402ff86160a1c17695575911136a2a1b8086dd3f5b1012679279acffbee59",
+     "size": 1745
+    },
+    {
+     "kind": "licensed",
+     "path": "bt/mt66xx/include/sdio/btmtk_sdio.h",
+     "sha256": "b323d802aa5aa387ec5f09bfb5f86fb9e31660bb7739752de559105d76c7d684",
+     "size": 3821
+    },
+    {
+     "kind": "licensed",
+     "path": "bt/mt66xx/include/uart/btmtk_uart.h",
+     "sha256": "5478f39b224cd223ae5bb457e90fb6a6dfaca97a312b0aa1bc9a343d25a1e7dc",
+     "size": 1386
+    },
+    {
+     "kind": "licensed",
+     "path": "bt/mt66xx/include/usb/btmtk_usb.h",
+     "sha256": "381e45a18399db4460f2cfbdb2bb0d72b9eaf8e1e1a7cb34daaeda2940aa9ae9",
+     "size": 2243
+    },
+    {
      "kind": "buildfile",
      "path": "common/Android.mk",
      "sha256": "95f2f146733b773b5ea0544a322f9f8a16966de4b1e9c0acf09b5cc9f355272c",
@@ -5821,6 +6001,24 @@
      "path": "gps/data_link/plat/v061_mt6653/linux"
     },
     {
+     "kind": "licensed",
+     "path": "gps/fw_log/fw_log_gps_lib.c",
+     "sha256": "03e328069aa5bcbb08b3a1d9b1045b7a617edbc21ad789612bc62549afc743a8",
+     "size": 3672
+    },
+    {
+     "kind": "licensed",
+     "path": "gps/fw_log/inc/fw_log_gps_lib.h",
+     "sha256": "bcdb3972585a8ec161e38311c7f9582f1c26c7ab9ba031d6292f8ef8a87a9b55",
+     "size": 1108
+    },
+    {
+     "kind": "licensed",
+     "path": "gps/fw_log_gps.c",
+     "sha256": "a4f45bebd7b5505f15fa9ab90b8bca0c432d8893ce17e3c53ec11492e2026ba2",
+     "size": 10588
+    },
+    {
      "kind": "buildfile",
      "path": "gps/gps_pwr/Android.mk",
      "sha256": "ffde0da80482ed686ea273128f0bfcd950a149d4271575f7914102552851136e",
@@ -11199,8 +11397,8 @@
      "size": 17267
     }
    ],
-   "imported_bytes": 64995797,
-   "imported_files": 1876,
+   "imported_bytes": 65650203,
+   "imported_files": 1909,
    "license": "GPL-2.0 / BSD-2-Clause (WLAN core); one Inprocomm TKIP file blocked",
    "selected_paths": [
     "conninfra",
@@ -11209,7 +11407,15 @@
     "wlan/core/gen4m",
     "bt/mt66xx/6878",
     "bt/mt66xx/btif",
+    "bt/mt66xx/include",
+    "bt/mt66xx/btmtk_buffer_mode.c",
+    "bt/mt66xx/btmtk_chip_reset.c",
+    "bt/mt66xx/btmtk_fw_log.c",
+    "bt/mt66xx/btmtk_main.c",
+    "bt/mt66xx/btmtk_woble.c",
     "gps/data_link",
+    "gps/fw_log",
+    "gps/fw_log_gps.c",
     "gps/gps_pwr",
     "gps/gps_scp",
     "fmradio",
@@ -18584,6 +18790,18 @@
      "size": 3237
     },
     {
+     "kind": "licensed",
+     "path": "imgsensor/inc/imgsensor-user.h",
+     "sha256": "230cd5d1b9839b60df58f86c6797c732b2651448c95976b6590cff483a2933c2",
+     "size": 16534
+    },
+    {
+     "kind": "licensed",
+     "path": "imgsensor/inc/kd_imgsensor_define_v4l2.h",
+     "sha256": "5eadff0c97586a049a5acfca6d380f3feea68dd5c19a991a32aa23d0912a9a7d",
+     "size": 44711
+    },
+    {
      "kind": "buildfile",
      "path": "imgsensor/src-v4l2/.gitignore",
      "sha256": "6c31f2f8cbbe34a72113a0457bab1695ad4d75af5cf327083f9c86fdd5bed4f7",
@@ -21306,10 +21524,40 @@
      "path": "mtk-hcp/mtk-hcp_kernelfence.h",
      "sha256": "cceb357104fcc8dd76e893cba77a5b916e5a42bd4cfe250861bab46161b7b349",
      "size": 1952
+    },
+    {
+     "kind": "buildfile",
+     "path": "mtk-ipesys-me/BUILD.bazel",
+     "sha256": "e15757c9853d87553b0983304b822ad5679023bc4ac4638549c861ca919ebd29",
+     "size": 836
+    },
+    {
+     "kind": "licensed",
+     "path": "mtk-ipesys-me/Kbuild",
+     "sha256": "9933289afcbd8eb371a8b0b45295d63c20398e5f1a64702dbf1bf13bab43c513",
+     "size": 1212
+    },
+    {
+     "kind": "licensed",
+     "path": "mtk-ipesys-me/Makefile",
+     "sha256": "69e0a4bf90bc1662c6e22d48c7e87e96ec5b3248bd0dcda947d4b5f62d94db33",
+     "size": 403
+    },
+    {
+     "kind": "licensed",
+     "path": "mtk-ipesys-me/mtk-ipesys-me.c",
+     "sha256": "199709a44a20c26e6db8598029c82b292e28f7f216d9fe437b2227ce6c6a7c13",
+     "size": 7522
+    },
+    {
+     "kind": "licensed",
+     "path": "mtk-ipesys-me/mtk-ipesys-me.h",
+     "sha256": "d740285a4863367f308b1ee53b061e95d413215a70c4ff47a9a832676d61c6b2",
+     "size": 797
     }
    ],
-   "imported_bytes": 19733267,
-   "imported_files": 979,
+   "imported_bytes": 19805282,
+   "imported_files": 986,
    "license": "GPL-2.0 / GPL-2.0-only; two camsys files carry no per-file SPDX",
    "selected_paths": [
     "camsys",
@@ -21320,7 +21568,9 @@
     "imgsys",
     "mtk-hcp",
     "mtk-aie",
-    "include"
+    "include",
+    "imgsensor/inc",
+    "mtk-ipesys-me"
    ],
    "source_commit": "7286106471dba28f8a4224e70a45be3c8d5505be",
    "source_repository": "mtkcam",
@@ -21333,8 +21583,38 @@
  "schema": 1,
  "source_root_label": "authorized external development workspace (path omitted)",
  "totals": {
-  "bytes": 92034244,
+  "bytes": 92760665,
   "excluded": 47,
-  "imported": 3532
- }
+  "imported": 3572
+ },
+ "unresolved_symlinks": [
+  {
+   "class": "OPTIONAL_COMPONENT",
+   "component": "connectivity",
+   "link": "../../../gps_mcudl/",
+   "path": "gps/data_link/plat/v060/gps_mcudl",
+   "reason": "gps/gps_mcudl is only used by GPS data_link v060/v061 (not MT6878, which builds v051) and embeds MCU firmware (plat/v060/fw/inc/mcu_rom_code.h); not imported"
+  },
+  {
+   "class": "OPTIONAL_COMPONENT",
+   "component": "connectivity",
+   "link": "../../../gps_mcudl",
+   "path": "gps/data_link/plat/v061/gps_mcudl",
+   "reason": "gps/gps_mcudl is only used by GPS data_link v060/v061 (not MT6878, which builds v051) and embeds MCU firmware (plat/v060/fw/inc/mcu_rom_code.h); not imported"
+  },
+  {
+   "class": "OPTIONAL_COMPONENT",
+   "component": "connectivity",
+   "link": "../../../gps_mcudl",
+   "path": "gps/data_link/plat/v061_mt6653/gps_mcudl",
+   "reason": "gps/gps_mcudl is only used by GPS data_link v060/v061 (not MT6878, which builds v051) and embeds MCU firmware (plat/v060/fw/inc/mcu_rom_code.h); not imported"
+  },
+  {
+   "class": "OPTIONAL_COMPONENT",
+   "component": "connectivity",
+   "link": "../gen4m_ext/",
+   "path": "wlan/core/gen4m/ext",
+   "reason": "wlan/core/gen4m_ext is a separate vendor extension project that is absent from the source repository; Kbuild.main only uses it when CONFIG_MTK_TC10_FEATURE=y (CONFIG_MTK_WIFI_EXT), which MT6878 does not set"
+  }
+ ]
 }
