@@ -29,6 +29,7 @@ struct fts_upgrade {
     struct fts_ts_data *ts_data;
     struct { u8 upgsts_boot; } *setting_nf;
     u8 *fw;
+    u32 fw_length;
     struct work_struct fwrecover_work;
 };
 static struct device dev;
@@ -43,6 +44,15 @@ static unsigned downloads, writes, resets, irq_enables, drains, esd_starts, queu
 static u8 gesture_reg;
 static bool slow_download, download_started;
 static u8 firmware[128];
+static char touch_fw_version[32];
+static unsigned acquisitions;
+static int fts_fwupg_get_fw_file(struct fts_upgrade *upg)
+{
+    acquisitions++;
+    upg->fw = firmware;
+    upg->fw_length = sizeof(firmware);
+    return 0;
+}
 enum { NONE, POWER_ON, POWER_OFF, RESET, DOWNLOAD, READY, ID_IO, FLAG,
        GESTURE_WRITE, GESTURE_READ, GESTURE_STATE, WAKE_ON, WAKE_OFF,
        SLEEP_WRITE, STOP_AFTER_DOWNLOAD, POCKET_WRITE };
@@ -60,6 +70,7 @@ static void log_sink(const char *fmt, ...) { (void)fmt; }
 #define FTS_REG_POWER_MODE 0xa5
 #define FTS_REG_POWER_MODE_SLEEP 3
 #define FTS_REG_CHIP_ID 0xa3
+#define FTS_REG_FW_VER 0xa6
 #define FTS_REG_BOOT_STATE 0xd0
 #define FTS_REG_GESTURE_EN 0xd0
 #define FTS_REG_FOD_EN 0xcf
@@ -161,7 +172,7 @@ static void init(void)
     ram_running = esd_running = true;
     fts_c56_life.irq_wake = irq_wake_live = false;
     tpgesture_status = yft_aod_state = fault = gesture_reg = 0;
-    downloads = writes = resets = irq_enables = drains = esd_starts = queued = 0;
+    downloads = writes = resets = irq_enables = drains = esd_starts = queued = acquisitions = 0;
 }
 static void balanced(void) { assert(!users && !pthread_mutex_trylock(&fts_c56_life.pm_lock)); mutex_unlock(&fts_c56_life.pm_lock); }
 static void failed(void) { assert(data.suspended && data.c56_pm_blocked && data.irq_disabled && !esd_running && !data.fw_is_running); balanced(); }
@@ -226,6 +237,12 @@ int main(void)
     init(); fault = ID_IO; assert(fts_wait_tp_to_valid() == -EIO); balanced();
     init(); data.suspended = true; data.c56_pm_blocked = true; esd_running = false;
     data.ic_info.is_incell = true; assert(!fts_ts_resume(&dev) && !resets && !downloads); balanced();
+    /* Early sleep wins acquisition: retain firmware, do not program asleep. */
+    prepare_sleep(0); upgrade.fw = NULL;
+    struct work_struct boot_work = {0};
+    fts_fwupg_work(&boot_work);
+    assert(acquisitions == 1 && upgrade.fw && !downloads && data.suspended);
+    assert(!fts_ts_resume(&dev) && ram_running && downloads == 1); balanced();
     /* Real pthread mutex serializes concurrent PM callers; mocked IRQ/work/IO. */
     prepare_sleep(0); slow_download = true;
     pthread_t a,b; assert(!pthread_create(&a,NULL,resume_thread,NULL));

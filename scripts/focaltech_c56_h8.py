@@ -97,6 +97,19 @@ def generate():
         '\tFTS_INFO("check if boot recovery");'), name)
     for fn in ['fts_fwrecover_work', 'fts_fwload_work']:
         src = modify_fn(src, fn, worker_lock, name)
+    def boot_worker(s):
+        # Acquisition must finish even if display sleep wins the race, so a
+        # later explicit normal resume has its embedded firmware available.
+        key = '\tif (upg->ts_data->fw_loading) {'
+        assert s.count(key) == 1
+        a = s.index(key)
+        head, tail = s[:a], s[a:]
+        tail = once(tail, '\t\treturn;', '\t\tgoto c56_pm_out;')
+        return head + ('\tmutex_lock(&fts_c56_life.pm_lock);\n'
+                       '\tif (fts_c56_stopping() || READ_ONCE(upg->ts_data->c56_pm_blocked))\n'
+                       '\t\tgoto c56_pm_out;\n') + tail[:-1] + (
+                       '\nc56_pm_out:\n\tmutex_unlock(&fts_c56_life.pm_lock);\n}')
+    src = modify_fn(src, 'fts_fwupg_work', boot_worker, name)
     out[name] = src
     name = 'focaltech_gesture.c'
     src = replace_fn(out[name], 'fts_gesture_suspend', '#include "focaltech_c56_pm_gesture.h"', name)
