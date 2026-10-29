@@ -398,6 +398,33 @@ def generate():
                     t = t.replace('FTS_DEBUG("disable_irq_wake(irq:%d) fail", ts_data->irq);\n    }', 'FTS_ERROR("disable_irq_wake(irq:%d) fail", ts_data->irq);\n    } else {\n        fts_c56_life.irq_wake = false;\n    }')
                 replace_fn(fn, t)
         if name == 'focaltech_fhp.c':
+            # An IRQ enqueue can race a closing file's queue release. Validate
+            # only under the SAME mutex as close; bound payload to its stride.
+            key = '#define FTS_FHP_FIX_ENQUEUE_OVERRUN 0'
+            assert src.count(key) == 1
+            at = src.index(key)
+            changes.append((at, at + len(key), key[:-1] + '1'))
+            replace_fn('fhpq_enqueue', '''static int fhpq_enqueue(struct fhp_queue *q, u8 *val)
+{
+    u8 *dst;
+    u64 stamp;
+    if (!q || !val) return -EINVAL;
+    stamp = ktime_to_us(ktime_get_real());
+    mutex_lock(&q->mutexq);
+    if (!q->buffer || q->sizeq < sizeof(stamp) || q->sizeq > FHP_FRAME_SIZE_MAX ||
+        !q->maxq || q->maxq > FHP_QUEUE_BUF_SIZE / q->sizeq || q->wridx >= q->maxq) {
+        mutex_unlock(&q->mutexq);
+        return -EINVAL;
+    }
+    dst = q->buffer + q->wridx * q->sizeq;
+    memcpy(dst, &stamp, sizeof(stamp));
+    memcpy(dst + sizeof(stamp), val, q->sizeq - sizeof(stamp));
+    q->wridx = (q->wridx + 1) % q->maxq;
+    if (q->count == q->maxq) q->rdidx = (q->rdidx + 1) % q->maxq;
+    else q->count++;
+    mutex_unlock(&q->mutexq);
+    return 0;
+}''')
             for fn in ['fhp_open', 'fhp_ioctl', 'fhp_input_ioctl']:
                 count_fn(fn, 'long' if 'ioctl' in fn else 'int')
             sub_fn('fhp_poll', '    poll_wait(', '    if (fts_c56_stopping()) return POLLERR | POLLHUP;\n    poll_wait(')
@@ -465,6 +492,40 @@ def generate():
             wake = 'void fts_c56_fwdbg_wake(void)\n{\n    if (fts_fwdbg_data) wake_up_all(&fts_fwdbg_data->frame_waitq);\n}\n'
             replace_fn('fts_fwdbg_exit', wake + t)
         if name == 'focaltech_ex_fun.c':
+            replace_fn('fts_ta_open', '''static int fts_ta_open(struct inode *inode, struct file *file)
+{
+    struct fts_ts_data *ts_data = pde_data(inode);
+    int ret = 0;
+    if (!fts_c56_get()) return -ESHUTDOWN;
+    mutex_lock(&fts_c56_life.ta_lock);
+    if (fts_c56_stopping()) { ret = -ESHUTDOWN; goto out; }
+    if (ts_data->touch_analysis_support && !ts_data->ta_buf) {
+        ts_data->ta_buf = kzalloc(FTS_MAX_TOUCH_BUF, GFP_KERNEL);
+        if (!ts_data->ta_buf) { ret = -ENOMEM; goto out; }
+    }
+    fts_c56_life.ta_open_count++;
+out:
+    mutex_unlock(&fts_c56_life.ta_lock);
+    fts_c56_put();
+    return ret;
+}''')
+            replace_fn('fts_ta_release', '''static int fts_ta_release(struct inode *inode, struct file *file)
+{
+    struct fts_ts_data *ts_data = pde_data(inode);
+    int ret = 0;
+    mutex_lock(&fts_c56_life.ta_lock);
+    if (!fts_c56_life.ta_open_count) {
+        FTS_ERROR("C56-H3 unbalanced TA release");
+        ret = -EINVAL;
+    } else if (!--fts_c56_life.ta_open_count) {
+        WRITE_ONCE(ts_data->ta_flag, 0);
+        wake_up_all(&ts_data->ts_waitqueue);
+    }
+    /* Device-owned buffer: keep it stable across IRQ/read/close; full removal
+     * frees it after IRQ synchronization and proc_remove drains all users. */
+    mutex_unlock(&fts_c56_life.ta_lock);
+    return ret;
+}''')
             # TA reads can otherwise wait forever while proc_remove drains active calls.
             a = src.index('wait_event_interruptible(ts_data->ts_waitqueue, !ts_data->ta_flag);')
             text = 'wait_event_interruptible(ts_data->ts_waitqueue, fts_c56_stopping() || !ts_data->ta_flag);\n        if (fts_c56_stopping()) return -ESHUTDOWN;\n#line ' + str(src.count('\n', 0, a) + 1) + ' "' + canonical + '"\n'

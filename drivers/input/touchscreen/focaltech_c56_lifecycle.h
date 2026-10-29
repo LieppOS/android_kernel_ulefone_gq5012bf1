@@ -17,6 +17,8 @@ struct fts_c56_lifecycle {
 	wait_queue_head_t idle;
 	struct mutex stop_lock;
 	struct mutex pm_lock;
+	struct mutex ta_lock;
+	unsigned int ta_open_count;
 	unsigned int active;
 	bool stopping;
 	bool quiesced;
@@ -37,6 +39,7 @@ struct fts_c56_lifecycle {
 		.idle = __WAIT_QUEUE_HEAD_INITIALIZER(n.idle),                 \
 		.stop_lock = __MUTEX_INITIALIZER(n.stop_lock),                 \
 		.pm_lock = __MUTEX_INITIALIZER(n.pm_lock),                     \
+		.ta_lock = __MUTEX_INITIALIZER(n.ta_lock),                     \
 	}
 
 extern struct fts_c56_lifecycle fts_c56_life;

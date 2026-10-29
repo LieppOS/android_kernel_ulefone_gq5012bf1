@@ -21,6 +21,8 @@
 #define WRITE_ONCE(x, v) __atomic_store_n(&(x), (v), __ATOMIC_SEQ_CST)
 #define WARN_ON_ONCE(x) ((x) ? (abort(), 1) : 0)
 typedef unsigned int u32;
+typedef uint8_t u8;
+typedef uint64_t u64;
 struct mutex {
 	pthread_mutex_t m;
 };
@@ -108,6 +110,10 @@ static atomic_int errors;
 #define GFP_KERNEL 0
 #define __user
 #define ENABLE 1
+#define FTS_MAX_TOUCH_BUF 4096
+#define FHP_QUEUE_BUF_SIZE 0x8000
+#define FHP_FRAME_SIZE_MAX 0xFF8
+#define FTS_FHP_FIX_ENQUEUE_OVERRUN 1
 #define container_of(p, t, m) ((t *)((char *)(p) - offsetof(t, m)))
 struct work_struct {
 	void (*func)(struct work_struct *);
@@ -126,6 +132,16 @@ struct device {
 struct spi_device {
 	struct fts_ts_data *data;
 };
+struct inode {
+	void *data;
+};
+struct file {
+	int unused;
+};
+static void *pde_data(struct inode *inode)
+{
+	return inode->data;
+}
 struct notifier_block {
 	int unused;
 };
@@ -156,12 +172,12 @@ struct fts_ts_data {
 	} ic_info;
 	struct regulator *vdd, *vcc_i2c;
 	unsigned long intr_jiffies;
-	bool esd_support, prc_support, prc_mode;
+	bool esd_support, prc_support, prc_mode, touch_analysis_support;
 };
 struct fhp_queue {
 	struct mutex mutexq;
-	void *buffer;
-	int count;
+	u8 *buffer;
+	unsigned int count, sizeq, maxq, wridx, rdidx;
 };
 struct fhp_data {
 	struct fts_ts_data *ts_data;
@@ -242,7 +258,8 @@ enum {
 	F_FHP_INPUT,
 	F_RESET,
 	F_VDD_DISABLE,
-	F_NOTIFIER
+	F_NOTIFIER,
+	F_TA_ALLOC
 };
 static bool fail(int n)
 {
@@ -250,6 +267,8 @@ static bool fail(int n)
 }
 static void *zalloc(size_t n)
 {
+	if (n == FTS_MAX_TOUCH_BUF && fail(F_TA_ALLOC))
+		return NULL;
 	void *p = calloc(1, n);
 	assert(p);
 	return p;
@@ -477,13 +496,6 @@ static void misc_deregister(void *p)
 	(void)p;
 	assert(registrations > 0);
 	registrations--;
-}
-static void fhpq_close(struct fhp_queue *q)
-{
-	mutex_lock(&q->mutexq);
-	kfree_safe(q->buffer);
-	q->count = 0;
-	mutex_unlock(&q->mutexq);
 }
 static int fhpq_dequeue_userspace(struct fhp_queue *q, void *p)
 {
@@ -753,6 +765,21 @@ static int esdcheck_algorithm(struct fts_ts_data *ts)
 	return 0;
 }
 
+static bool freeze_clock;
+static atomic_bool enqueue_clock_entered, release_clock;
+static u64 ktime_get_real(void)
+{
+	if (freeze_clock) {
+		atomic_store(&enqueue_clock_entered, true);
+		sync_event();
+		pthread_mutex_lock(&evlock);
+		while (!atomic_load(&release_clock))
+			pthread_cond_wait(&evcond, &evlock);
+		pthread_mutex_unlock(&evlock);
+	}
+	return 123456;
+}
+#define ktime_to_us(x) (x)
 #include "focaltech_c56_power.h"
 /* Exact generated driver functions, not copies maintained in this test file. */
 #include "c56_extracted.h"
@@ -1103,6 +1130,120 @@ static void test_pm_stop(void)
 	finish(t);
 }
 
+static void setup_ring(struct fhp_queue *q)
+{
+	memset(q, 0, sizeof(*q));
+	mutex_init(&q->mutexq);
+	q->buffer = zalloc(FHP_QUEUE_BUF_SIZE);
+	q->sizeq = 16;
+	q->maxq = FHP_QUEUE_BUF_SIZE / 16;
+	q->wridx = q->maxq - 1;
+}
+static void test_ring_boundary(void)
+{
+	struct fhp_queue q;
+	u8 val[16];
+	memset(val, 0x5a, sizeof(val));
+	setup_ring(&q);
+	assert(!fhpq_enqueue(&q, val));
+	assert(q.wridx == 0);
+	assert(!memcmp(q.buffer + FHP_QUEUE_BUF_SIZE - 8, val, 8));
+	u64 stamp;
+	memcpy(&stamp, q.buffer + FHP_QUEUE_BUF_SIZE - 16, 8);
+	assert(stamp == 123456);
+	assert(!fhpq_enqueue(&q, val));
+	memcpy(&stamp, q.buffer + FHP_QUEUE_BUF_SIZE - 16, 8);
+	assert(stamp == 123456);
+	fhpq_close(&q);
+}
+static void test_closed_queue(void)
+{
+	struct fhp_queue q;
+	u8 val[16] = { 0 };
+	setup_ring(&q);
+	fhpq_close(&q);
+	assert(fhpq_enqueue(&q, val) == -EINVAL);
+	q.buffer = zalloc(FHP_QUEUE_BUF_SIZE);
+	q.sizeq = 4;
+	assert(fhpq_enqueue(&q, val) == -EINVAL);
+	fhpq_close(&q);
+}
+static void *ta_open_thread(void *arg)
+{
+	assert(!fts_ta_open(arg, NULL));
+	return NULL;
+}
+static void test_ta_lifetime(void)
+{
+	struct fts_ts_data *t = make_ts();
+	assert(!fts_ts_probe_entry(t));
+	t->touch_analysis_support = true;
+	struct inode node = { .data = t };
+	pthread_t a, b;
+	pthread_create(&a, NULL, ta_open_thread, &node);
+	pthread_create(&b, NULL, ta_open_thread, &node);
+	join(a);
+	join(b);
+	assert(fts_c56_life.ta_open_count == 2 && t->ta_buf);
+	void *saved = t->ta_buf;
+	int frees = free_count;
+	assert(!fts_ta_release(&node, NULL) && fts_c56_life.ta_open_count == 1);
+	assert(t->ta_buf == saved && free_count == frees);
+	assert(!fts_c56_quiesce(t));
+	assert(fts_ta_open(&node, NULL) == -ESHUTDOWN);
+	assert(!fts_ta_release(&node, NULL) && !fts_c56_life.ta_open_count);
+	assert(t->ta_buf == saved && free_count == frees);
+	finish(t);
+}
+static void test_old_queue(void)
+{
+	struct fhp_queue q;
+	u8 val[16] = { 0 };
+	setup_ring(&q);
+	c56_old_fhpq_enqueue(&q, val);
+	abort();
+}
+struct ring_arg {
+	struct fhp_queue *q;
+	u8 val[16];
+	int result;
+};
+static void *enqueue_thread(void *arg)
+{
+	struct ring_arg *r = arg;
+	r->result = fhpq_enqueue(r->q, r->val);
+	return NULL;
+}
+static void test_queue_close_race(void)
+{
+	struct fhp_queue q;
+	setup_ring(&q);
+	freeze_clock = true;
+	struct ring_arg a = { .q = &q };
+	pthread_t p;
+	pthread_create(&p, NULL, enqueue_thread, &a);
+	wait_flag(&enqueue_clock_entered);
+	fhpq_close(&q);
+	atomic_store(&release_clock, true);
+	sync_event();
+	join(p);
+	assert(a.result == -EINVAL);
+}
+
+static void test_ta_alloc_failure(void)
+{
+	struct fts_ts_data *t = make_ts();
+	assert(!fts_ts_probe_entry(t));
+	t->touch_analysis_support = true;
+	struct inode node = { .data = t };
+	fault = F_TA_ALLOC;
+	assert(fts_ta_open(&node, NULL) == -ENOMEM);
+	assert(!t->ta_buf && !fts_c56_life.ta_open_count &&
+	       !READ_ONCE(fts_c56_life.active));
+	fault = 0;
+	finish(t);
+}
+
 int main(int argc, char **argv)
 {
 	assert(argc == 2);
@@ -1151,6 +1292,18 @@ int main(int argc, char **argv)
 		test_pm_serialization();
 	else if (fault == 117)
 		test_pm_stop();
+	else if (fault == 118)
+		test_ring_boundary();
+	else if (fault == 119)
+		test_closed_queue();
+	else if (fault == 120)
+		test_ta_lifetime();
+	else if (fault == 121)
+		test_old_queue();
+	else if (fault == 122)
+		test_queue_close_race();
+	else if (fault == 123)
+		test_ta_alloc_failure();
 	else
 		abort();
 	printf("PASS %d\n", fault);
