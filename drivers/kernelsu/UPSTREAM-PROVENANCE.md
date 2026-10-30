@@ -15,7 +15,8 @@ upstream checkout or `/home/armol/kernel-work/`.  The upstream `setup.sh`,
 `.vscode/` and CI helper scripts are not needed for the kernel build and were
 not imported.  The only local modification to upstream build logic is the
 pinned, offline version block in `Kbuild` (v4.3.0 / version code 41100), because
-the vendored snapshot has no upstream `.git` directory.
+the vendored snapshot has no upstream `.git` directory.  The exact local diff
+is in `Kbuild.local.diff`.
 
 Integration is kprobe-based (`main` branch), not the manual-hook `builtin`
 branch.  Required kernel options are `CONFIG_KPROBES=y` and `CONFIG_EXT4_FS=y`;
