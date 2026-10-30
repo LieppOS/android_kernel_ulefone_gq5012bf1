@@ -191,3 +191,6 @@ obj-$(CONFIG_PECI)		+= peci/
 obj-$(CONFIG_HTE)		+= hte/
 
 obj-$(CONFIG_OEM_DEVINFO) += chino-e/
+
+# SukiSU Ultra (vendored kernel source, see drivers/kernelsu/UPSTREAM-PROVENANCE.md)
+obj-$(CONFIG_KSU) += kernelsu/

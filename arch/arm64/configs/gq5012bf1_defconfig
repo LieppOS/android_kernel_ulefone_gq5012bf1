@@ -9209,3 +9209,11 @@ CONFIG_MTK_GPU_MT6989_SUPPORT=m
 # Renesas pinctrl drivers
 #
 # end of Renesas pinctrl drivers
+
+# SukiSU Ultra v4.3.0 (KernelSU fork), built-in kprobe integration
+CONFIG_KSU=y
+CONFIG_KSU_MANUAL_SU=y
+# CONFIG_KSU_DEBUG is not set
+# CONFIG_KPM is not set
+# CONFIG_KSU_DISABLE_MANAGER is not set
+# CONFIG_KSU_DISABLE_POLICY is not set
