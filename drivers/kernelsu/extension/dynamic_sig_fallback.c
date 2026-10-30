@@ -6,8 +6,7 @@
  * second chance: re-scan /data/app and crown *any* APK signed with the
  * canonical built-in KernelSU signature, regardless of its package name.
  * It is reached through the ksu_sig_fallback static key (see
- * dynamic_sig_fallback.h) rather than a weak symbol, so the call site is
- * an indirect branch with a real default target and an uninstalled
+ * dynamic_sig_fallback.h) rather than a weak symbol, so an uninstalled
  * fallback can never deref NULL.
  *
  * The scanner is deliberately self-contained: its own dir_context, its own
@@ -31,13 +30,6 @@
 #include <linux/string.h>
 #include <linux/types.h>
 #include <linux/version.h>
-
-#include "klog.h" // IWYU pragma: keep
-#include "util.h"
-#include "uapi/app_profile.h"
-#include "manager/apk_sign.h"
-#include "manager/manager_identity.h"
-#include "dynamic_sig_fallback.h"
 
 #define DATA_PATH_LEN 384 // 384 is enough for /data/app/<package>/base.apk
 
@@ -210,7 +202,11 @@ static bool fb_crown_by_signature(struct list_head *uid_data)
     return crowned;
 }
 
+#ifdef KSU_COMPAT_USE_STATIC_KEY
 DEFINE_STATIC_KEY_FALSE(ksu_sig_fallback_key);
+#else
+bool ksu_sig_fallback_enabled __read_mostly = false;
+#endif
 
 ksu_sig_fallback_fn ksu_sig_fallback_current;
 
@@ -226,10 +222,10 @@ int ksu_sig_fallback_register(ksu_sig_fallback_fn fn)
         return 0;
 
     if (was_enabled)
-        static_branch_disable(&ksu_sig_fallback_key);
+        KSU_SIG_FALLBACK_DISABLE();
 
     WRITE_ONCE(ksu_sig_fallback_current, fn);
-    static_branch_enable(&ksu_sig_fallback_key);
+    KSU_SIG_FALLBACK_ENABLE();
     pr_info("sig_fallback: registered %px\n", (void *)fn);
     return 0;
 }
@@ -239,7 +235,7 @@ void ksu_sig_fallback_unregister(void)
     if (!READ_ONCE(ksu_sig_fallback_current))
         return;
 
-    static_branch_disable(&ksu_sig_fallback_key);
+    KSU_SIG_FALLBACK_DISABLE();
     WRITE_ONCE(ksu_sig_fallback_current, NULL);
     pr_info("sig_fallback: unregistered, fallback disabled\n");
 }

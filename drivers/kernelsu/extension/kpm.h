@@ -2,10 +2,6 @@
 #ifndef __KSU_H_EXTENSION_KPM_GLUE
 #define __KSU_H_EXTENSION_KPM_GLUE
 
-#include <linux/types.h>
-
-#include "extension.h"
-
 /* KPM extension glue (extension/kpm.c). Sticky state + io passthrough
  * to the actual KPM control surface (extension/kpm/kpm.c). Built
  * unconditionally so extension/extension.c can reference the symbols

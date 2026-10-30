@@ -1,31 +1,3 @@
-#include <linux/rcupdate.h>
-#include <linux/limits.h>
-#include <linux/rculist.h>
-#include <linux/mutex.h>
-#include <linux/task_work.h>
-#include <linux/capability.h>
-#include <linux/compiler.h>
-#include <linux/fs.h>
-#include <linux/gfp.h>
-#include <linux/kernel.h>
-#include <linux/list.h>
-#include <linux/printk.h>
-#include <linux/slab.h>
-#include <linux/types.h>
-#include <linux/version.h>
-#include <linux/compiler_types.h>
-#include <linux/hashtable.h>
-#include <linux/kref.h>
-
-#include "klog.h" // IWYU pragma: keep
-#include "ksu.h"
-#include "runtime/ksud_boot.h"
-#include "selinux/selinux.h"
-#include "policy/allowlist.h"
-#include "manager/manager_identity.h"
-#include "infra/su_mount_ns.h"
-#include "feature/shell_su_adb_only.h"
-
 #define FILE_MAGIC 0x7f4b5355 // ' KSU', u32
 #define FILE_FORMAT_VERSION 4 // u32
 
@@ -38,7 +10,7 @@ static DEFINE_MUTEX(allowlist_mutex);
 static struct root_profile default_root_profile;
 static struct non_root_profile default_non_root_profile;
 
-static void __init init_default_profiles()
+static void __init init_default_profiles(void)
 {
     kernel_cap_t full_cap = CAP_FULL_SET;
 
@@ -134,7 +106,6 @@ static bool profile_valid(struct app_profile *profile)
     }
 
     if (profile->allow_su) {
-#ifndef CONFIG_KSU_DISABLE_POLICY
         if (profile->rp_config.profile.groups_count > KSU_MAX_GROUPS) {
             pr_err("invalid groups_count in app_profile: %s\n", profile->key);
             return false;
@@ -147,7 +118,6 @@ static bool profile_valid(struct app_profile *profile)
             pr_err("invalid selinux_domain in app_profile: %s\n", profile->key);
             return false;
         }
-#endif
     }
 
     return true;
@@ -173,17 +143,6 @@ int ksu_set_app_profile(struct app_profile *profile)
         pr_err("Failed to set app profile: invalid profile!\n");
         return -EINVAL;
     }
-
-#ifdef CONFIG_KSU_DISABLE_POLICY
-    if (profile->allow_su) {
-        profile->rp_config.use_default = true;
-        memset(profile->rp_config.template_name, 0, sizeof(profile->rp_config.template_name));
-        memset(&profile->rp_config.profile, 0, sizeof(profile->rp_config.profile));
-    } else {
-        profile->nrp_config.use_default = true;
-        memset(&profile->nrp_config.profile, 0, sizeof(profile->nrp_config.profile));
-    }
-#endif
 
     // only allow default non root profile
     if (unlikely(profile->curr_uid == KSU_APP_PROFILE_PRESERVE_UID && strcmp(profile->key, "$") != 0)) {
@@ -301,31 +260,34 @@ bool __ksu_is_allow_uid_for_current(uid_t uid)
 
 bool ksu_uid_should_umount(uid_t uid)
 {
+    struct app_profile *profile;
+    bool res;
     if (likely(ksu_is_manager_appid_valid()) && unlikely(ksu_get_manager_appid() == uid % PER_USER_RANGE)) {
         // we should not umount on manager!
         return false;
     }
-#ifdef CONFIG_KSU_DISABLE_POLICY
-    return !__ksu_is_allow_uid(uid);
-#else
-    struct perm_data *p;
-    bool res;
 
     rcu_read_lock();
-    res = default_non_root_profile.umount_modules;
-    // No profile pointer escapes this RCU critical section.
-    hash_for_each_possible_rcu (allow_list, p, list, uid) {
-        if (p->profile.curr_uid != uid)
-            continue;
-        if (p->profile.allow_su)
-            res = false;
-        else if (!p->profile.nrp_config.use_default)
-            res = p->profile.nrp_config.profile.umount_modules;
-        break;
+    profile = ksu_get_app_profile(uid);
+    if (!profile) {
+        // no app profile found, it must be non root app
+        res = default_non_root_profile.umount_modules;
+    } else if (profile->allow_su) {
+        // if found and it is granted to su, we shouldn't umount for it
+        res = false;
+    } else {
+        // found an app profile
+        if (profile->nrp_config.use_default) {
+            res = default_non_root_profile.umount_modules;
+        } else {
+            res = profile->nrp_config.profile.umount_modules;
+        }
     }
     rcu_read_unlock();
+
+    if (profile)
+        ksu_put_app_profile(profile);
     return res;
-#endif
 }
 
 void ksu_put_app_profile(struct app_profile *profile)
@@ -336,10 +298,6 @@ void ksu_put_app_profile(struct app_profile *profile)
 
 struct root_profile *ksu_get_root_profile(uid_t uid)
 {
-#ifdef CONFIG_KSU_DISABLE_POLICY
-    (void)uid;
-    return &default_root_profile;
-#else
     struct perm_data *p = NULL;
     struct root_profile *res;
 
@@ -373,7 +331,6 @@ retry:
 
     rcu_read_unlock();
     return res;
-#endif
 }
 
 void ksu_put_root_profile(struct root_profile *profile)
@@ -453,7 +410,7 @@ out:
     kfree(_cb);
 }
 
-void ksu_persistent_allow_list()
+void ksu_persistent_allow_list(void)
 {
     struct task_struct *tsk;
 
@@ -495,7 +452,11 @@ static void migrate_profile(u32 version, struct app_profile *profile)
                 pr_info("migrated domain of profile: %s\n", profile->key);
             }
         }
+#if LINUX_VERSION_CODE > KERNEL_VERSION(5, 6, 0)
         fallthrough;
+#else
+        /* fall through */
+#endif
     case 3:
         if (profile->allow_su) {
             profile->rp_config.profile.flags = FLAG_KSU_NO_NEW_PRIVS;
@@ -506,13 +467,8 @@ static void migrate_profile(u32 version, struct app_profile *profile)
     profile->version = KSU_APP_PROFILE_VER;
 }
 
-void ksu_load_allow_list()
+void ksu_load_allow_list(void)
 {
-#ifdef CONFIG_KSU_DISABLE_POLICY
-    pr_info("allowlist load skipped because policy is disabled\n");
-    return;
-#endif
-
     loff_t off = 0;
     ssize_t ret = 0;
     struct file *fp = NULL;

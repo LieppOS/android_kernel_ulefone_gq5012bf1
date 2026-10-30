@@ -1,12 +1,3 @@
-#include "policy/feature.h"
-#include "klog.h" // IWYU pragma: keep
-
-#include <linux/bitmap.h>
-#include <linux/kernel.h>
-#include <linux/moduleparam.h>
-#include <linux/mutex.h>
-#include <linux/string.h>
-
 static const struct ksu_feature_handler *feature_handlers[KSU_FEATURE_MAX];
 
 static DEFINE_MUTEX(feature_mutex);
@@ -19,7 +10,6 @@ static const char *const feature_names[KSU_FEATURE_MAX] = {
     [KSU_FEATURE_SELINUX_HIDE] = "selinux_hide",
     [KSU_FEATURE_SHELL_SU_ADB_ONLY] = "shell_su_adb_only",
     [KSU_FEATURE_MOUNT_HIDE] = "mount_hide",
-    [KSU_FEATURE_AVC_SPOOF] = "avc_spoof",
 };
 
 // Features forced by boot config. Written only while parsing module params

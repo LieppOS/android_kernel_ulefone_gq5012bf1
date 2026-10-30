@@ -47,11 +47,8 @@
 #include <linux/kernel.h>
 #include <linux/uaccess.h>
 
-#include "extension.h"
 #include "kpm/kpm.h"
 #include "kpm/bridge.h"
-
-#include "klog.h" // IWYU pragma: keep
 
 int ksu_extension_kpm_get(u32 id, u64 *value)
 {

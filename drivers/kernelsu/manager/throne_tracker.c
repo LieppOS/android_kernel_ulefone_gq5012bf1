@@ -1,24 +1,3 @@
-#include "ksu.h"
-#include "linux/cred.h"
-#include "linux/namei.h"
-#include "util.h"
-#include <linux/err.h>
-#include <linux/fs.h>
-#include <linux/list.h>
-#include <linux/slab.h>
-#include <linux/string.h>
-#include <linux/types.h>
-#include <linux/version.h>
-
-#include "policy/allowlist.h"
-#include "manager/apk_sign.h"
-#include "klog.h" // IWYU pragma: keep
-#include "manager/manager_identity.h"
-#include "manager/throne_tracker.h"
-#include "extension/dynamic_sig_fallback.h"
-
-static DEFINE_MUTEX(throne_tracker_mutex);
-
 uid_t ksu_manager_appid = KSU_INVALID_APPID;
 
 #define DATA_PATH_LEN 384 // 384 is enough for /data/app/<package>/base.apk
@@ -47,13 +26,21 @@ struct data_path {
     struct list_head list;
 };
 
+struct apk_path_hash {
+    unsigned int hash;
+    bool exists;
+    struct list_head list;
+};
+
 struct my_dir_context {
     struct dir_context ctx;
     struct list_head *data_path_list;
     char *parent_dir;
     void *private_data;
     int depth;
+    int *stop;
 };
+
 // https://docs.kernel.org/filesystems/porting.html
 // filldir_t (readdir callbacks) calling conventions have changed. Instead of returning 0 or -E... it returns bool now. false means "no more" (as -E... used to) and true - "keep going" (as 0 in old calling conventions). Rationale: callers never looked at specific -E... values anyway. -> iterate_shared() instances require no changes at all, all filldir_t ones in the tree converted.
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0)
@@ -83,10 +70,7 @@ static FILLDIR_RETURN_TYPE my_actor(struct dir_context *ctx, const char *name, i
                                     unsigned int d_type)
 {
     struct my_dir_context *my_ctx = container_of(ctx, struct my_dir_context, ctx);
-
-    // we put the apk path we collected here
     char *candidate_path = (char *)my_ctx->private_data;
-
     char dirpath[DATA_PATH_LEN];
 
     if (!strncmp(name, "..", namelen) || !strncmp(name, ".", namelen))
@@ -110,7 +94,7 @@ static FILLDIR_RETURN_TYPE my_actor(struct dir_context *ctx, const char *name, i
             return FILLDIR_ACTOR_CONTINUE;
         }
 
-        strscpy(data->dirpath, dirpath, DATA_PATH_LEN);
+        strncpy(data->dirpath, dirpath, DATA_PATH_LEN - 1);
         data->depth = my_ctx->depth - 1;
         list_add_tail(&data->list, my_ctx->data_path_list);
 
@@ -118,7 +102,7 @@ static FILLDIR_RETURN_TYPE my_actor(struct dir_context *ctx, const char *name, i
     }
 
     // now put this on candidate_path
-    if (d_type == DT_REG && namelen == 8 && !memcmp(name, "base.apk", 8)) {
+    if (d_type == DT_REG && !strncmp(name, "base.apk", 8)) {
         if (maybe_manager_apk_dir(my_ctx->parent_dir)) {
             snprintf(candidate_path, DATA_PATH_LEN, "%s/%.*s", my_ctx->parent_dir, namelen, name);
             strcpy(cached_manager_apk_path, candidate_path);
@@ -138,27 +122,31 @@ static void search_manager(const char *path, int depth, struct list_head *uid_da
     unsigned long data_app_magic = 0;
 
     // First depth
-    struct data_path data;
-    strscpy(data.dirpath, path, DATA_PATH_LEN);
-    data.depth = depth;
-    list_add_tail(&data.list, &data_path_list);
+    struct data_path *data = kzalloc(sizeof(*data), GFP_KERNEL);
+    if (!data)
+        return;
+
+    strncpy(data->dirpath, path, DATA_PATH_LEN - 1);
+    data->depth = depth;
+    list_add_tail(&data->list, &data_path_list);
 
     // we put the apk path we collected here
     char candidate_path[DATA_PATH_LEN];
-    candidate_path[0] = 0;
+	candidate_path[0] = 0;
 
     for (i = depth; i >= 0; i--) {
         struct data_path *pos, *n;
 
         list_for_each_entry_safe (pos, n, &data_path_list, list) {
-            if (stop)
+			if (stop)
                 goto skip_iterate;
             struct my_dir_context ctx = { .ctx.actor = my_actor,
                                           .data_path_list = &data_path_list,
                                           .parent_dir = pos->dirpath,
                                           .private_data = candidate_path,
                                           .depth = pos->depth };
-            struct file *file = ksu_filp_open_nonotify(pos->dirpath, O_RDONLY | O_NOFOLLOW | O_NOATIME | O_DIRECTORY);
+
+            struct file *file = ksu_filp_open_nonotify(pos->dirpath, O_RDONLY | O_NOFOLLOW);
             if (IS_ERR(file)) {
                 pr_err("Failed to open directory: %s, err: %ld\n", pos->dirpath, PTR_ERR(file));
                 goto skip_iterate;
@@ -185,10 +173,10 @@ static void search_manager(const char *path, int depth, struct list_head *uid_da
             iterate_dir(file, &ctx.ctx);
             filp_close(file, NULL);
 
-            if (!candidate_path[0])
+            if (!strstarts(candidate_path, "/data/ap"))
                 goto skip_iterate;
 
-            // As soon as we get the manager apk path, we can stop
+			// As soon as we get the manager apk path, we can stop
             stop = 1;
 
             bool is_manager = is_manager_apk(candidate_path);
@@ -202,7 +190,7 @@ static void search_manager(const char *path, int depth, struct list_head *uid_da
 
         skip_iterate:
             list_del(&pos->list);
-            if (pos != &data)
+            if (pos != data)
                 kfree(pos);
         }
     }
@@ -225,7 +213,6 @@ static bool is_uid_exist(uid_t uid, char *package, void *data)
 
 void track_throne(bool prune_only)
 {
-    mutex_lock(&throne_tracker_mutex);
     const struct cred *old_cred = override_creds(ksu_cred);
     struct file *fp = filp_open(SYSTEM_PACKAGES_LIST_PATH, O_RDONLY, 0);
     if (IS_ERR(fp)) {
@@ -276,7 +263,7 @@ void track_throne(bool prune_only)
             break;
         }
         data->uid = res;
-        strscpy(data->package, package, sizeof(data->package));
+        strncpy(data->package, package, KSU_MAX_PACKAGE_NAME);
         list_add_tail(&data->list, &uid_list);
         // reset line start
         line_start = pos;
@@ -301,38 +288,32 @@ void track_throne(bool prune_only)
     }
 
     if (manager_package_uid == KSU_INVALID_APPID) {
-		cached_manager_apk_path[0] = 0;
-		if (ksu_is_manager_appid_valid()) {
-			struct uid_data *cur;
-			bool still_installed = false;
+        cached_manager_apk_path[0] = 0;
+        if (ksu_is_manager_appid_valid()) {
+            struct uid_data *cur;
+            bool still_installed = false;
 
-			list_for_each_entry (cur, &uid_list, list) {
-				if (cur->uid == ksu_get_manager_appid()) {
-					still_installed = true;
-					break;
-				}
-			}
+            list_for_each_entry (cur, &uid_list, list) {
+                if (cur->uid == ksu_get_manager_appid()) {
+                    still_installed = true;
+                    break;
+                }
+            }
 
-			if (still_installed) {
-				pr_info("manager uid=%u still installed (signature fallback), skip search!\n",
-						ksu_get_manager_appid());
-				goto prune;
-			}
+            if (still_installed) {
+                pr_info("manager uid=%u still installed (signature fallback), skip search!\n",
+                        ksu_get_manager_appid());
+                goto prune;
+            }
 
-			pr_info("manager is uninstalled, invalidate it!\n");
-			ksu_invalidate_manager_uid();
-		}
+            pr_info("manager is uninstalled, invalidate it!\n");
+            ksu_invalidate_manager_uid();
+        }
 
-		/*
-		 * Signature fallback: crown any APK signed with the canonical
-		 * KernelSU signature, whatever its package name is. The branch
-		 * is a static key, so it is patched out entirely when no
-		 * fallback implementation is registered.
-		 */
-		if (ksu_sig_fallback_run(&uid_list))
-			goto prune;
+        if (ksu_sig_fallback_run(&uid_list))
 
-	} else {
+            goto prune;
+    } else {
         if (!ksu_is_manager_appid_valid()) {
             need_rescan = true;
         } else if (unlikely(np->uid != ksu_get_manager_appid())) {
@@ -377,17 +358,14 @@ out:
     }
 out_revert_cred:
     revert_creds(old_cred);
-    mutex_unlock(&throne_tracker_mutex);
 }
 
-void __init ksu_throne_tracker_init()
+void __init ksu_throne_tracker_init(void)
 {
     // nothing to do
-    ksu_sig_fallback_init();
 }
 
-void __exit ksu_throne_tracker_exit()
+void __exit ksu_throne_tracker_exit(void)
 {
     // nothing to do
-    ksu_sig_fallback_exit();
 }

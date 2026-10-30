@@ -7,9 +7,6 @@
 #include <linux/mutex.h>
 #include <linux/spinlock.h>
 
-#include "extension.h"
-#include "uapi/manager.h"
-#include "uapi/extension.h"
 /*
  * Dynamic manager extension.
  *

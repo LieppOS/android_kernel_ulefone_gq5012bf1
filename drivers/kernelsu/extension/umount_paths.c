@@ -28,12 +28,6 @@
 #include <linux/list.h>
 #include <linux/sched.h>
 
-#include "uapi/supercall.h"
-#include "feature/kernel_umount.h"
-#include "umount_paths.h"
-
-#include "klog.h" // IWYU pragma: keep
-
 struct list_head mount_list = LIST_HEAD_INIT(mount_list);
 DECLARE_RWSEM(mount_list_lock);
 

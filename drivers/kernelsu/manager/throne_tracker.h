@@ -1,35 +1,16 @@
 #ifndef __KSU_H_UID_OBSERVER
 #define __KSU_H_UID_OBSERVER
 
-#include <linux/types.h>
-#include <linux/list.h>
-#include "uapi/app_profile.h"
-
 struct uid_data {
-	struct list_head list;
-	u32 uid;
-	char package[KSU_MAX_PACKAGE_NAME];
+    struct list_head list;
+    u32 uid;
+    char package[KSU_MAX_PACKAGE_NAME];
 };
 
-#ifdef CONFIG_KSU_DISABLE_MANAGER
-static inline void ksu_throne_tracker_init()
-{
-}
+void ksu_throne_tracker_init(void);
 
-static inline void ksu_throne_tracker_exit()
-{
-}
-
-static inline void track_throne(bool prune_only)
-{
-    (void)prune_only;
-}
-#else
-void ksu_throne_tracker_init();
-
-void ksu_throne_tracker_exit();
+void ksu_throne_tracker_exit(void);
 
 void track_throne(bool prune_only);
-#endif
 
 #endif

@@ -10,8 +10,8 @@
 #ifdef CONFIG_ARM64
 #include <asm/ptrace.h>
 #endif
-#include "infra/symbol_resolver.h"
 #include "kpm.h"
+#include "compact.h"
 #include "bridge.h"
 
 #define KPM_NAME_LEN 32
@@ -183,3 +183,7 @@ int do_kpm(void __user *arg)
     result = handle_kpm(&cmd);
     return copy_to_user(u64_to_user_ptr(cmd.result_code), &result, sizeof(result)) ? -EFAULT : 0;
 }
+
+/* The top-level extension.c registers the KPM extension handler; this
+ * file only implements the underlying KPM control surface. */
+

@@ -19,13 +19,6 @@
 #include <linux/errno.h>
 #include <linux/kernel.h>
 
-#include "klog.h" // IWYU pragma: keep
-#include "ksu.h"
-#include "dynamic_manager.h"
-#include "manager/manager_identity.h"
-#include "manager/apk_sign.h"
-#include "manager/throne_tracker.h"
-
 #define DYNAMIC_MANAGER_FILE "/data/adb/ksu/.dynamic_managers"
 #define DYNAMIC_MANAGER_MAGIC 0x4d534b44
 #define DYNAMIC_MANAGER_VERSION 1

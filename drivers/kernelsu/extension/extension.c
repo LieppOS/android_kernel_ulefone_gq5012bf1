@@ -18,15 +18,6 @@
 #include <linux/string.h>
 #include <linux/types.h>
 
-#include "extension.h"
-#include "kpm.h"
-#include "cpu_spoof.h"
-#include "umount_paths.h"
-#include "dynamic_manager.h"
-#include "susfs_extension.h"
-#include "version_spoof.h"
-#include "klog.h" // IWYU pragma: keep
-
 static const struct ksu_extension_handler *extension_handlers[KSU_EXTENSION_MAX];
 
 static DEFINE_MUTEX(extension_mutex);
@@ -43,13 +34,13 @@ static const char *const extension_names[KSU_EXTENSION_MAX] = {
 /*
  * Force-extension bitmap (parallel to policy/feature.c).
  * Each set bit in forced_mask means "userspace cannot change this
- * extension anymore"; the saved value lives in forced_values[id] and
+ * extension anymore"; the saved value lives in extension_forced_values[id] and
  * is replayed on every boot through either ops->set (value-flavored)
  * or handler->apply_forced (io-flavored). forced_pending is the
  * replay backlog: bits stay set until ksu_extension_apply_forced()
  * successfully replays them.
  */
-static u64 forced_values[KSU_EXTENSION_MAX];
+static u64 extension_forced_values[KSU_EXTENSION_MAX];
 static DECLARE_BITMAP(forced_mask, KSU_EXTENSION_MAX);
 static DECLARE_BITMAP(forced_pending, KSU_EXTENSION_MAX);
 
@@ -127,7 +118,7 @@ static int force_extension_param_set(const char *val,
             continue;
         }
 
-        forced_values[id] = value;
+        extension_forced_values[id] = value;
         set_bit(id, forced_mask);
         set_bit(id, forced_pending);
         pr_info("extension: %s (id=%u) forced to %llu\n",
@@ -459,14 +450,14 @@ void ksu_extension_apply_forced(void)
              * later it must be replayed explicitly.
              */
             pr_warn("extension: force_extension=%s=%llu pending: handler not registered\n",
-                    extension_names[id], forced_values[id]);
+                    extension_names[id], extension_forced_values[id]);
             clear_bit(id, forced_pending);
             continue;
         }
 
         /* Dispatch order is fixed:
          *   1. ops->set      — value-flavoured handlers, replay the
-         *                       raw u64 forced_values[id].
+         *                       raw u64 extension_forced_values[id].
          *   2. apply_forced  — io-flavoured handlers, kernel-side
          *                       callback that receives the raw u64.
          *                       No user pointer is fabricated.
@@ -476,25 +467,25 @@ void ksu_extension_apply_forced(void)
          *                       umount_paths, EFAULT for others)
          *                       and is no longer used here. */
         if (handler->ops && handler->ops->set) {
-            ret = handler->ops->set(id, forced_values[id]);
+            ret = handler->ops->set(id, extension_forced_values[id]);
         } else if (handler->apply_forced) {
-            handler->apply_forced(id, forced_values[id]);
+            handler->apply_forced(id, extension_forced_values[id]);
             ret = 0;
         } else {
             pr_warn("extension: force_extension=%s=%llu ignored: handler has no apply_forced and no ops->set\n",
-                    extension_names[id], forced_values[id]);
+                    extension_names[id], extension_forced_values[id]);
             clear_bit(id, forced_pending);
             continue;
         }
 
         if (ret) {
             pr_warn("extension: apply forced %s=%llu failed: %d\n",
-                    extension_names[id], forced_values[id], ret);
+                    extension_names[id], extension_forced_values[id], ret);
             continue;
         }
         clear_bit(id, forced_pending);
         pr_info("extension: applied forced %s=%llu\n", extension_names[id],
-                forced_values[id]);
+                extension_forced_values[id]);
     }
 
     mutex_unlock(&extension_mutex);
@@ -522,7 +513,7 @@ void __init ksu_extension_register_all(void)
     /* KPM exposes .get (so KSU_EXTENSION_GET reports CONFIG_KPM)
      * but no .set. Forced-by-config is applied through
      * ksu_extension_kpm_apply_forced, a kernel-side callback that
-     * receives the raw forced_values[id] u64 and never a userspace
+     * receives the raw extension_forced_values[id] u64 and never a userspace
      * pointer. The userspace ioctl entry point (ksu_extension_kpm_io)
      * sees only real user addresses and forwards them to do_kpm(). */
     static const struct ksu_extension_handler kpm_handler = {

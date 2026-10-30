@@ -21,9 +21,6 @@
 #include <linux/uaccess.h>
 #include <linux/version.h>
 
-#include "cpu_spoof.h"
-#include "infra/symbol_resolver.h"
-#include "klog.h" // IWYU pragma: keep
 
 #if defined(CONFIG_ARM64) || defined(__aarch64__)
 #include <asm/cpu.h>

@@ -13,9 +13,6 @@
  * the entry point that the extension glue (extension/kpm.c) needs.
  */
 
-#include <linux/types.h>
-#include "uapi/extension.h"
-
 /* Dispatch a kpm control op from userspace. */
 int do_kpm(void __user *arg);
 

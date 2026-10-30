@@ -4,7 +4,6 @@
 #include "uapi/supercall.h"
 #include "uapi/app_profile.h"
 #include "uapi/feature.h"
-#include "uapi/extension.h"
 #include "uapi/selinux.h"
 #include "uapi/sulog.h"
 #include "uapi/manager.h"

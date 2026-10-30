@@ -4,9 +4,6 @@
 #include <linux/ioctl.h>
 #include <linux/types.h>
 
-#include "uapi/manager.h"
-#include "uapi/supercall.h"
-
 /*
  * Extension subsystem architecture.
  *
@@ -96,6 +93,12 @@
  * that boot only.
  */
 
+#ifdef __BINDGEN__
+#define DECLARE(type, name, val) static const type name = val
+#else
+#define DECLARE(type, name, val) enum { name = val }
+#endif
+
 enum ksu_extension_id {
     KSU_EXTENSION_KPM = 0,
     KSU_EXTENSION_CPU_SPOOF = 1,
@@ -108,12 +111,13 @@ enum ksu_extension_id {
 };
 
 /* Operation discriminator for the unified KSU_IOCTL_EXTENSION. */
-#define KSU_EXTENSION_GET  1u
-#define KSU_EXTENSION_SET  2u
-#define KSU_EXTENSION_IO   3u
-#define KSU_EXTENSION_WIPE 4u
+DECLARE(__u32, KSU_EXTENSION_GET,  1);
+DECLARE(__u32, KSU_EXTENSION_SET,  2);
+DECLARE(__u32, KSU_EXTENSION_IO,   3);
+DECLARE(__u32, KSU_EXTENSION_WIPE, 4);
 /* Answers the extension ABI probe; see the api_version discussion above. */
-#define KSU_EXTENSION_ABI  5u
+DECLARE(__u32, KSU_EXTENSION_ABI, 5);
+
 /*
  * Enumerates registered handlers so userspace does not need a mirror of
  * enum ksu_extension_id. ABI 2+ only.
@@ -127,7 +131,7 @@ enum ksu_extension_id {
  * registered handler. The reply also echoes id/supported/api_version, but the
  * descriptor is the authoritative copy.
  */
-#define KSU_EXTENSION_ENUM 6u
+DECLARE(__u32, KSU_EXTENSION_ENUM, 6);
 
 /*
  * Extension ABI version spoken by this kernel, and the id reserved for the
@@ -159,11 +163,11 @@ struct ksu_extension_desc {
  * KSU_FEATURE_FLAG_SUPPORTED is shared with uapi/supercall.h; bit 7 keeps
  * its historical value so managers built before the other bits existed
  * still read FORCED correctly. */
-#define KSU_EXTENSION_FLAG_STICKY   (1u << 1)
-#define KSU_EXTENSION_FLAG_PERSIST  (1u << 2)
-#define KSU_EXTENSION_FLAG_PER_UID  (1u << 3)
-#define KSU_EXTENSION_FLAG_REBOOT   (1u << 4)
-#define KSU_EXTENSION_FLAG_FORCED   (1u << 7)
+DECLARE(__u32, KSU_EXTENSION_FLAG_STICKY, (1u << 1));
+DECLARE(__u32, KSU_EXTENSION_FLAG_PERSIST, (1u << 2));
+DECLARE(__u32, KSU_EXTENSION_FLAG_PER_UID, (1u << 3));
+DECLARE(__u32, KSU_EXTENSION_FLAG_REBOOT, (1u << 4));
+DECLARE(__u32, KSU_EXTENSION_FLAG_FORCED, (1u << 7));
 
 /* Common header for the unified extension ioctl. */
 struct ksu_extension_cmd {
@@ -176,15 +180,15 @@ struct ksu_extension_cmd {
 };
 
 // 0. KPM
-static const __u32 SUKISU_KPM_LOAD = 1;
-static const __u32 SUKISU_KPM_UNLOAD = 2;
-static const __u32 SUKISU_KPM_NUM = 3;
-static const __u32 SUKISU_KPM_LIST = 4;
-static const __u32 SUKISU_KPM_INFO = 5;
-static const __u32 SUKISU_KPM_CONTROL = 6;
-static const __u32 SUKISU_KPM_VERSION = 7;
+DECLARE(__u32, SUKISU_KPM_LOAD, 1);
+DECLARE(__u32, SUKISU_KPM_UNLOAD, 2);
+DECLARE(__u32, SUKISU_KPM_NUM, 3);
+DECLARE(__u32, SUKISU_KPM_LIST, 4);
+DECLARE(__u32, SUKISU_KPM_INFO, 5);
+DECLARE(__u32, SUKISU_KPM_CONTROL, 6);
+DECLARE(__u32, SUKISU_KPM_VERSION, 7);
 /* Optional event-aware load used for boot-stage modules. */
-static const __u32 SUKISU_KPM_LOAD_EVENT = 8;
+DECLARE(__u32, SUKISU_KPM_LOAD_EVENT, 8);
 
 struct ksu_kpm_cmd {
     __aligned_u64 control_code;
@@ -228,20 +232,22 @@ struct ksu_extension_umount_cmd {
     } payload;
 };
 
-#define KSU_UMOUNT_IO_OP_ADD  1u
-#define KSU_UMOUNT_IO_OP_DEL  2u
-#define KSU_UMOUNT_IO_OP_LIST 3u
+DECLARE(__u32, KSU_UMOUNT_IO_OP_ADD,  1);
+DECLARE(__u32, KSU_UMOUNT_IO_OP_DEL,  2);
+DECLARE(__u32, KSU_UMOUNT_IO_OP_LIST, 3);
 
 /* 5. VERSION_SPOOF */
-#define KSU_VERSION_SPOOF_IO_GET   1u
-#define KSU_VERSION_SPOOF_IO_SET   2u
-#define KSU_VERSION_SPOOF_IO_RESET 3u
-#define KSU_VERSION_SPOOF_WORKING_VERSION (1u << 0)
-#define KSU_VERSION_SPOOF_FULL_VERSION    (1u << 1)
-#define KSU_VERSION_SPOOF_UAPI_VERSION    (1u << 2)
+DECLARE(__u32, KSU_VERSION_SPOOF_IO_GET, 1);
+DECLARE(__u32, KSU_VERSION_SPOOF_IO_SET, 2);
+DECLARE(__u32, KSU_VERSION_SPOOF_IO_RESET, 3);
+DECLARE(__u32, KSU_VERSION_SPOOF_WORKING_VERSION, (1u << 0));
+DECLARE(__u32, KSU_VERSION_SPOOF_FULL_VERSION, (1u << 1));
+DECLARE(__u32, KSU_VERSION_SPOOF_UAPI_VERSION, (1u << 2));
+
 #define KSU_VERSION_SPOOF_MASK_ALL \
     (KSU_VERSION_SPOOF_WORKING_VERSION | KSU_VERSION_SPOOF_FULL_VERSION | \
      KSU_VERSION_SPOOF_UAPI_VERSION)
+
 struct ksu_version_spoof_cmd {
     __u32 op;
     __u32 mask;
@@ -255,8 +261,9 @@ struct ksu_version_spoof_cmd {
 };
 
 /* IOCTL command: one ioctl, extension handlers are enumerated above. */
-static const __u32 KSU_IOCTL_EXTENSION =
-    _IOC(_IOC_READ | _IOC_WRITE, 'K', 300, sizeof(struct ksu_extension_cmd));
+DECLARE(__u32, KSU_IOCTL_EXTENSION,
+        _IOC(_IOC_READ | _IOC_WRITE, 'K', 300,
+             sizeof(struct ksu_extension_cmd)));
 
 /*
  * NOTE: the `force_extension=<id>:<value>` boot-config encoding is
