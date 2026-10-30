@@ -64,11 +64,11 @@ priority-UID filtering (`susfs_set_priority_uid_filter`) and AVC-log spoofing
 
 ## Userspace compatibility boundary
 
-The SukiSU v4.3.0 release manager packages the `ksu_susfs_2.2.0` userspace
-asset. The kernel side here is SUSFS v2.3.0 because SukiSU builtin `b16e899a`
-requires its priority-UID/AVC interfaces. Common SUSFS commands are present,
-but the v2.2.0 userspace asset may not expose every v2.3.0 feature. No manager
-APK or userspace SUSFS binary is included, installed, or tested here.
+SukiSU v4.3.0's manager and `ksud` source contain SUSFS UI/commands including
+priority-UID filtering and AVC-log spoofing. The v4.3.0 GitHub release does not
+ship a separate `ksu_susfs` asset; management is through `ksud`/the manager.
+No manager APK or userspace SUSFS binary is included, installed, or tested
+here. Source-level ABI compatibility is therefore the limit of this claim.
 
 ## Build
 
