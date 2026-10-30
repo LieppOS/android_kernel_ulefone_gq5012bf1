@@ -112,6 +112,27 @@ vendor_boot packaging are not changed by this integration; the existing C46/C48
 packaging instructions remain the reference, and no packaging output was
 flashed.
 
+## Boot image, vendor_boot, DTB/DTBO and vendor modules
+
+SukiSU is built into the kernel `Image`, so the changed payload is the kernel
+payload used by the boot image. The existing device-tree and vendor_boot inputs
+are unchanged: the SukiSU source import does not modify DTB/DTBO sources, the
+MediaTek vendor-module source, or the vendor-module build recipe.
+
+The authenticated C46/C48 packaging references remain the reference for any
+later boot-image work:
+
+- `boot_b-c44-lz4-signed.img` (the unchanged C44 kernel boot image used by C46)
+- `vendor_boot_b-c46-mtk-mmc.img` (C46 vendor_boot with the rebuilt MMC module)
+- `vbmeta_b-c46-mtk-mmc.img` (C46 vbmeta)
+- C46 packaging evidence under
+  `research/ulefone-gq5012bf1/campaigns/c46-mtk-mmc-probe-fix/`
+
+Packaging tools and signing material are those of the existing Android build;
+they were not exercised here. The in-tree module build produced 702 `.ko`
+files, and the SukiSU source is built in rather than shipped as `kernelsu.ko`.
+No boot image, vendor_boot image, DTB/DTBO image, or partition was written.
+
 ## Remaining limitations
 
 - No SukiSU boot, root-manager, SELinux, module-load, or device test was run.
