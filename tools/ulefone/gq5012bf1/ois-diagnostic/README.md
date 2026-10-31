@@ -221,12 +221,20 @@ nor shared with OV64B's rails; or a chip at a different address (DT `reg` is
 says nothing about another lens. Private raw records:
 `build/ois-diagnostic/runtime-v2/`.
 
+## Follow-up: bus ACK survey (2026-11-01)
+
+A write-free follow-up (`../i2c-ack-probe/`) found that DT `reg` values are
+placeholders (the HAL drives every back AF at 7-bit `0x0c`), and that with each
+back camera streaming nothing ACKs at `0x72`, `0x0e` or `0x0a` on I2C-2/4/7.
+Every other responder is accounted for except I2C-4 `0x21`, which follows the
+OV64B sensor enables rather than the actuator rail. OIS controller very likely
+not fitted.
+
 ## Next step / research ownership
 
-Further software probing has low expected value. Distinguishing "absent" from
-"unpowered/other address" would need either another bounded single-address
-attempt (e.g. `0x0e`, with its own unknown-device pointer-write risk) or a
-teardown/board inspection. No stock OIS initialization should be used.
+Software probing is effectively exhausted. Only teardown/board inspection could
+turn "very likely not fitted" into proof. No stock OIS initialization should be
+used, and a model-word pointer write to `0x21` is not justified by the evidence.
 Never use an unsuffixed/implicit flash target or write Slot A.
 
 Canonical research receives the bounded source findings and remaining unknowns
