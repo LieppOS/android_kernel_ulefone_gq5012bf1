@@ -150,6 +150,14 @@ static void delay_init_timerhandler(struct timer_list *t);
 static struct timer_list micbias_timer;
 static void dis_micbias_timerhandler(struct timer_list *t);
 static bool dis_micbias_done;
+/* 4-pole TRRS AUX with a floating mic contact: the ACCDET FSM settles at
+ * AB_11 and never raises ACCDET_IRQ, so the EINT0 plug-in is never
+ * reported. After the FSM has had time to classify, fall back to
+ * HEADSET_NO_MIC (the same state used for a 3-pole plug).
+ */
+#define AUX_DETECT_FALLBACK_TIMER (1 * HZ)
+static struct delayed_work aux_detect_work;
+static void aux_detect_work_callback(struct work_struct *work);
 static char accdet_log_buf[1280];
 static bool debug_thread_en;
 static bool dump_reg;
@@ -1643,6 +1651,44 @@ static void dis_micbias_work_callback(struct work_struct *work)
 	}
 }
 
+static void aux_detect_work_callback(struct work_struct *work)
+{
+	u32 cur_AB = 0, eint0_in = 0;
+
+	if (!HAS_CAP(accdet->data->caps, ACCDET_PMIC_EINT_IRQ))
+		return;
+
+	/* EINT0 must still report a plugged accessory. */
+	eint0_in = accdet_read_bits(ACCDET_EINT0_MEM_IN_ADDR,
+			ACCDET_EINT0_MEM_IN_SFT,
+			ACCDET_EINT0_MEM_IN_MASK);
+	if (eint0_in != M_PLUG_IN)
+		return;
+
+	/* Only the open/floating mic state (AB_11) needs the fallback. */
+	cur_AB = accdet_read(ACCDET_MEM_IN_ADDR) >> ACCDET_STATE_MEM_IN_OFFSET;
+	cur_AB = cur_AB & ACCDET_STATE_AB_MASK;
+	if (cur_AB != ACCDET_STATE_AB_11)
+		return;
+
+	mutex_lock(&accdet->res_lock);
+	if (!accdet->eint_sync_flag ||
+	    accdet->cur_eint_state != EINT_PLUG_IN ||
+	    accdet->cable_type != NO_DEVICE ||
+	    accdet->accdet_status != PLUG_OUT) {
+		/* ACCDET_IRQ classified the accessory in the meantime. */
+		mutex_unlock(&accdet->res_lock);
+		return;
+	}
+
+	accdet->cable_type = HEADSET_NO_MIC;
+	accdet->accdet_status = HOOK_SWITCH;
+	send_status_event(HEADSET_NO_MIC, 1);
+	mutex_unlock(&accdet->res_lock);
+
+	pr_info("accdet AUX(floating mic) PlugIn, report HEADSET_NO_MIC\n");
+}
+
 static void eint_work_callback(struct work_struct *work)
 {
 	if (accdet->cur_eint_state == EINT_PLUG_IN) {
@@ -1658,11 +1704,14 @@ static void eint_work_callback(struct work_struct *work)
 
 		enable_accdet(0);
 		gpio_set_value(g_gpio_accdet_fm_switch, 1);
+		mod_delayed_work(system_wq, &aux_detect_work,
+			AUX_DETECT_FALLBACK_TIMER);
 	} else {
 		mutex_lock(&accdet->res_lock);
 		accdet->eint_sync_flag = false;
 		accdet->thing_in_flag = false;
 		mutex_unlock(&accdet->res_lock);
+		cancel_delayed_work_sync(&aux_detect_work);
 		if (accdet_dts.moisture_detect_mode != 0x5)
 			del_timer_sync(&micbias_timer);
 
@@ -3014,6 +3063,7 @@ static int mt6369_accdet_probe(struct platform_device *pdev)
 	if (!accdet->timer_lock)
 		return -ENOMEM;
 	mutex_init(&accdet->res_lock);
+	INIT_DELAYED_WORK(&aux_detect_work, aux_detect_work_callback);
 
 	platform_set_drvdata(pdev, accdet);
 
@@ -3230,6 +3280,7 @@ err_chrdevregion:
 
 static int mt6369_accdet_remove(struct platform_device *pdev)
 {
+	cancel_delayed_work_sync(&aux_detect_work);
 	destroy_workqueue(accdet->eint_workqueue);
 	destroy_workqueue(accdet->dis_micbias_workqueue);
 	destroy_workqueue(accdet->accdet_workqueue);
