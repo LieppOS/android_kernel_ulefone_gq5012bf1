@@ -2206,7 +2206,7 @@ CONFIG_MTK_VIDEO_LM3643=m
 CONFIG_MTK_VIDEO_LM3644=m
 CONFIG_MTK_VIDEO_SY7806=m
 # CONFIG_MTK_IMGSENSOR is not set
-CONFIG_CUSTOM_KERNEL_IMGSENSOR="imx882_mipi_raw imx882txd_mipi_raw gc16b3c_mipi_raw gc16b3ctxd_mipi_raw sc202cs_mipi_raw sc202cssj_mipi_raw"
+CONFIG_CUSTOM_KERNEL_IMGSENSOR="imx989_mipi_raw imx989cts_mipi_raw s5kgm2sp_mipi_raw s5kgn1sp_mipi_raw ov32b40_mipi_raw s5kjn1_mipi_raw s5kjn1cts_mipi_raw s5kjn1main2_mipi_raw ov64b_mipi_raw"
 # CONFIG_MTK_IMGSENSOR_PLATFORM_SUPPORT is not set
 # CONFIG_MTK_IMGSENSOR_MT6853 is not set
 # CONFIG_MTK_IMGSENSOR_MT6893 is not set

@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# GQ5012BF1 stock sensor candidates, in preserved stock registration order.
+# Merge into the verified working kernel configuration; keep its other features.
+CONFIG_CUSTOM_KERNEL_IMGSENSOR="imx989_mipi_raw imx989cts_mipi_raw s5kgm2sp_mipi_raw s5kgn1sp_mipi_raw ov32b40_mipi_raw s5kjn1_mipi_raw s5kjn1cts_mipi_raw s5kjn1main2_mipi_raw ov64b_mipi_raw"
