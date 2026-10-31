@@ -7,7 +7,7 @@ the model-word read at `0x0a` NACKed (see `../ois-diagnostic/README.md`).
 | module | source | what it may do |
 |---|---|---|
 | `ois_ackscan` | `ois_ackprobe.c` | per bus 2/4/7, once each: (a) one-byte read at fixed `0x0c` (AF control), `0x72`, `0x0e`, `0x0a`; (b) one-byte read of every 7-bit `0x08`–`0x77` except a fixed skip list of driver-owned addresses |
-| `ois_i2cpeek` | `ois_i2cpeek.c` | I2C-4 only, allowlist `0x0c`/`0x21`/`0x22`, 1–4 byte current-address read, 16 requests total |
+| `ois_i2cpeek2` | `ois_i2cpeek.c` (v2) | fixed (bus, address) allowlist: I2C-4 `0c 21 22 20 51`, I2C-7 `0c 20 51`, I2C-2 `0c 10`; 1–4 byte current-address read, 16 requests total |
 
 Both are inert until insertion with `enable_*=1` **and** an exact acknowledgement
 string per request, require `CAP_SYS_RAWIO`, have no unload path and no exports.
@@ -15,11 +15,12 @@ A one-byte read sends only the address byte; it cannot change a register pointer
 or value. It can still be observed by the device (EEPROM current-address pointer
 advances), so driver-owned addresses are skipped.
 
-`ois_ackscan` is the `ois_ackprobe.c` source built under a new module name (via
-`Kbuild`) so it could coexist with the permanently loaded first build
-(`ois_ackprobe`, fixed-table only, sha256 `95cbe83d…`). Loaded `ois_ackscan`:
-`065770ee…`; rebuilding with the current `Kbuild` gives a different binary hash
-(`7f903324…`) from the identical C source (same `srcversion`).
+Module names differ from source names (`Kbuild` composites) so new builds could
+coexist with permanently loaded earlier ones. Builds loaded on the phone:
+`ois_ackprobe` (fixed table only) `95cbe83d…`; `ois_ackscan` `065770ee…`;
+`ois_i2cpeek` v1 (I2C-4 only, `0c 21 22`) `e71cbab9…`; `ois_i2cpeek2`
+`723a9080…`. Rebuilding with the current `Kbuild` changes binary hashes of the
+unchanged `ois_ackprobe.c` (same `srcversion`).
 
 Build/verify (offline, private new `--out` each time):
 
@@ -52,9 +53,20 @@ module's rails on). `rc 1` = ACK, `-6` = ENXIO (NACK in `i2c-mt65xx`).
   So `0x21` follows OV64B's own enables, not the actuator rail. Most consistent
   with a second responder on the sensor die; unproven.
 
+* Skipped DT placeholder addresses (`ois_i2cpeek2`, each with its camera
+  streaming): I2C-7 `0x20`, `0x51`; I2C-4 `0x20`, `0x51`; I2C-2 `0x10` all NACK,
+  while the `0x0c` control on each bus ACKs. Addresses stock actually uses
+  (sensor, EEPROM, AF) were the only ones never probed.
+* Offline stock firmware: factory-mode menu (`vendor/etc/factory.ini`) has
+  camera and lens (AF) items but no OIS/hall item; `vendor/bin/factory`,
+  `meta_tst`, stock `EngineerMode.apk` contain no OIS strings; stock
+  `Camera.apk` exposes EIS only (`config_eis_support`, MTK `EIS`/`EIS3rd`);
+  `libcameracustom.lens.so` OIS lists are `Dummy`; no OIS property or config.
+
 **Conclusion:** no DW9781C-like responder on the back-camera buses under any
-camera's power. OIS controller very likely not fitted. Not proof: driver-owned
-addresses were skipped, other buses and 10-bit addressing were not tested.
+camera's power, and stock firmware has no OIS feature, test or calibration.
+OIS controller very likely not fitted. Not proof: other buses and 10-bit
+addressing untested; only teardown is definitive.
 
 All three modules stay loaded until the next normal reboot. Private raw records:
 `build/ois-diagnostic/runtime-ackprobe/` (contains EEPROM bytes; never publish).

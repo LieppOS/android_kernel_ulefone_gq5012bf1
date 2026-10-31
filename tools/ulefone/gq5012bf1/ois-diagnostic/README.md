@@ -227,8 +227,9 @@ A write-free follow-up (`../i2c-ack-probe/`) found that DT `reg` values are
 placeholders (the HAL drives every back AF at 7-bit `0x0c`), and that with each
 back camera streaming nothing ACKs at `0x72`, `0x0e` or `0x0a` on I2C-2/4/7.
 Every other responder is accounted for except I2C-4 `0x21`, which follows the
-OV64B sensor enables rather than the actuator rail. OIS controller very likely
-not fitted.
+OV64B sensor enables rather than the actuator rail; skipped DT placeholder
+addresses also NACK. Stock firmware has no OIS feature, factory test or
+calibration (EIS only). OIS controller very likely not fitted.
 
 ## Next step / research ownership
 

@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-only
-# ois_ackscan is built from ois_ackprobe.c under a new name so it can coexist
-# with the permanently loaded v1 ois_ackprobe until reboot.
-obj-m := ois_ackscan.o ois_i2cpeek.o
+# Module names differ from sources so new builds can coexist with permanently
+# loaded earlier builds (ois_ackprobe, ois_i2cpeek v1) until reboot.
+obj-m := ois_ackscan.o ois_i2cpeek2.o
 ois_ackscan-y := ois_ackprobe.o
+ois_i2cpeek2-y := ois_i2cpeek.o
 ccflags-y += -Werror

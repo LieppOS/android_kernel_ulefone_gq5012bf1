@@ -86,7 +86,7 @@ def main():
         "compiler": compiler, "compiler_sha256": digest(toolchain / "bin/clang"),
         "source_sha256": {name: digest(here / name) for name in ("Kbuild", "ois_ackprobe.c", "ois_i2cpeek.c")},
         "kernel_release": release,
-        "candidate_sha256": {name: digest(module / name) for name in ("ois_ackscan.ko", "ois_i2cpeek.ko")},
+        "candidate_sha256": {name: digest(module / name) for name in ("ois_ackscan.ko", "ois_i2cpeek2.ko")},
         "unsigned": True, "phone_access": False,
     }
     (out / "BUILD.json").write_text(json.dumps(receipt, indent=2) + "\n")

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0-only
 // Copyright (C) 2026 LieppOS contributors
 /*
- * Experimental read-only peek used to characterise an unexplained I2C-4
- * responder. Every request is ONE single-message read of 1..4 bytes from
- * the device's current address: no write phase exists in this module. Only
- * I2C-4 and a fixed address allowlist are accepted, with a hard request cap.
+ * Experimental read-only peek used to characterise camera-bus responders.
+ * Every request is ONE single-message read of 1..4 bytes from the device's
+ * current address: no write phase exists in this module. Only a fixed
+ * (bus, address) allowlist is accepted, with a hard request cap.
  */
 #include <linux/capability.h>
 #include <linux/i2c.h>
@@ -14,15 +14,26 @@
 #include <linux/mutex.h>
 #include <linux/string.h>
 
-#define PEEK_BUS 4
 #define PEEK_PHRASE ":I_ACCEPT_CURRENT_ADDRESS_READ"
 #define PEEK_MAX_REQUESTS 16
 #define PEEK_MAX_LEN 4
 
-/* 0x0c = HAL-driven AF control, 0x21 = unexplained, 0x22 = OV64B alt id. */
-static const unsigned short allowed[] = { 0x0c, 0x21, 0x22 };
+/*
+ * 0x0c = HAL-driven AF positive control on every bus. I2C-4: 0x21 unexplained,
+ * 0x22 OV64B alt id. 0x20/0x51 (I2C-4/7) and 0x10 (I2C-2) are DT placeholder
+ * client addresses that stock was traced never to use.
+ */
+static const struct {
+	unsigned char bus;
+	unsigned char addr;
+} allowed[] = {
+	{ 4, 0x0c }, { 4, 0x21 }, { 4, 0x22 }, { 4, 0x20 }, { 4, 0x51 },
+	{ 7, 0x0c }, { 7, 0x20 }, { 7, 0x51 },
+	{ 2, 0x0c }, { 2, 0x10 },
+};
 
 struct peek_record {
+	unsigned char bus;
 	unsigned short addr;
 	unsigned char len;
 	int rc;
@@ -61,28 +72,30 @@ static int hex_digit(char c)
 	return -1;
 }
 
-/* Exact format "AA:N<phrase>": two lower-case hex digits, length 1..4. */
+/* Exact "B:AA:N<phrase>": bus digit, two lower-case hex digits, length 1..4. */
 static int peek_set(const char *value, const struct kernel_param *parameter)
 {
 	struct peek_record *record;
 	struct i2c_adapter *adapter;
 	struct i2c_msg message;
 	unsigned short addr;
-	int hi, lo, len, i, ret = 0;
+	int bus, hi, lo, len, i, ret = 0;
 	bool ok = false;
 
 	(void)parameter;
-	if (strlen(value) != 4 + strlen(PEEK_PHRASE) || value[2] != ':' ||
-	    strcmp(value + 4, PEEK_PHRASE))
+	if (strlen(value) != 6 + strlen(PEEK_PHRASE) || value[1] != ':' ||
+	    value[4] != ':' || strcmp(value + 6, PEEK_PHRASE))
 		return -EINVAL;
-	hi = hex_digit(value[0]);
-	lo = hex_digit(value[1]);
-	len = value[3] - '0';
-	if (hi < 0 || lo < 0 || len < 1 || len > PEEK_MAX_LEN)
+	bus = hex_digit(value[0]);
+	hi = hex_digit(value[2]);
+	lo = hex_digit(value[3]);
+	len = value[5] - '0';
+	if (bus < 0 || bus > 9 || hi < 0 || lo < 0 || len < 1 ||
+	    len > PEEK_MAX_LEN)
 		return -EINVAL;
 	addr = hi << 4 | lo;
 	for (i = 0; i < ARRAY_SIZE(allowed); i++)
-		ok |= allowed[i] == addr;
+		ok |= allowed[i].bus == bus && allowed[i].addr == addr;
 	if (!ok)
 		return -EXDEV;
 
@@ -99,7 +112,7 @@ static int peek_set(const char *value, const struct kernel_param *parameter)
 		ret = -EDQUOT;
 		goto out;
 	}
-	adapter = i2c_get_adapter(PEEK_BUS);
+	adapter = i2c_get_adapter(bus);
 	if (!adapter) {
 		ret = -ENODEV;
 		goto out;
@@ -109,6 +122,7 @@ static int peek_set(const char *value, const struct kernel_param *parameter)
 		goto put;
 	}
 	record = &records[used++];
+	record->bus = bus;
 	record->addr = addr;
 	record->len = len;
 	message.addr = addr;
@@ -129,12 +143,12 @@ static int status_get(char *buffer, const struct kernel_param *parameter)
 
 	(void)parameter;
 	mutex_lock(&peek_lock);
-	length = scnprintf(buffer, PAGE_SIZE, "protocol=1 bus=%d used=%u/%d\n",
-			   PEEK_BUS, used, PEEK_MAX_REQUESTS);
+	length = scnprintf(buffer, PAGE_SIZE, "protocol=2 used=%u/%d\n",
+			   used, PEEK_MAX_REQUESTS);
 	for (i = 0; i < used; i++) {
 		length += scnprintf(buffer + length, PAGE_SIZE - length,
-				    "%d 0x%02x rc=%d", i, records[i].addr,
-				    records[i].rc);
+				    "%d bus=%u 0x%02x rc=%d", i, records[i].bus,
+				    records[i].addr, records[i].rc);
 		for (j = 0; j < records[i].len && records[i].rc == 1; j++)
 			length += scnprintf(buffer + length, PAGE_SIZE - length,
 					    " %02x", records[i].data[j]);
@@ -153,7 +167,7 @@ static const struct kernel_param_ops status_ops = {
 };
 
 module_param_cb(peek, &peek_ops, NULL, 0200);
-MODULE_PARM_DESC(peek, "\"AA:N" PEEK_PHRASE "\" current-address read, I2C-4 allowlist");
+MODULE_PARM_DESC(peek, "\"B:AA:N" PEEK_PHRASE "\" current-address read, fixed allowlist");
 module_param_cb(status, &status_ops, NULL, 0400);
 MODULE_PARM_DESC(status, "Cached results only");
 
@@ -162,7 +176,7 @@ static int __init ois_i2cpeek_init(void)
 	mutex_lock(&peek_lock);
 	ready = true;
 	mutex_unlock(&peek_lock);
-	pr_info("ois_i2cpeek: passive; no I2C operations performed at init\n");
+	pr_info("ois_i2cpeek2: passive; no I2C operations performed at init\n");
 	return 0;
 }
 module_init(ois_i2cpeek_init);
@@ -170,5 +184,5 @@ module_init(ois_i2cpeek_init);
 /* Deliberately no unload path. */
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("LieppOS contributors");
-MODULE_VERSION("1");
-MODULE_DESCRIPTION("Allowlisted read-only current-address peek on I2C-4");
+MODULE_VERSION("2");
+MODULE_DESCRIPTION("Allowlisted read-only current-address peek on camera I2C buses");
