@@ -45,12 +45,16 @@ MODULE_PARM_DESC(enable_sample,
 static int validate_target(struct i2c_client *client)
 {
 	struct device *dev = &client->dev;
+	char path[sizeof(OIS_DIAG_DT_PATH) + 1];
 
 	if (client->adapter->nr != OIS_DIAG_BUS ||
 	    client->addr != OIS_DIAG_ADDR || client->flags != 0)
 		return -EXDEV;
-	if (!dev->of_node ||
-	    strcmp(of_node_full_name(dev->of_node), OIS_DIAG_DT_PATH) ||
+	if (!dev->of_node)
+		return -ENODEV;
+	/* full_name holds only the last component; %pOF prints the full path. */
+	scnprintf(path, sizeof(path), "%pOF", dev->of_node);
+	if (strcmp(path, OIS_DIAG_DT_PATH) ||
 	    !of_device_is_compatible(dev->of_node, "mediatek,dw9781c"))
 		return -ENODEV;
 	if (!dev->driver || strcmp(dev->driver->name, "dw9781c"))

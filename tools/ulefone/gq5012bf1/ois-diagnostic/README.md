@@ -1,6 +1,9 @@
 # Experimental OIS model-word diagnostic — protocol v2
 
-**V2 IS BUILT/ABI-VERIFIED OFFLINE ONLY. IT HAS NEVER RUN ON THE PHONE.**
+**HARDWARE RESULT (2026-11-01): one model-word read was attempted with OV64B
+streaming and the OIS client PM-held. It failed with `ENXIO` (no ACK at 7-bit
+`0x0a` on I2C-4). No OIS chip response has ever been observed.** See
+"Hardware attempt" below. A NACK does not prove the chip is absent.
 **OIS population, real electrical power, lens ownership and stabilization remain
 unconfirmed. No new device access is authorized by this source or its build.**
 
@@ -117,15 +120,20 @@ not OIS initialization or proof of real power. Both success and error/close path
 current provider bindings and concurrent consumers need fresh review/preflight.
 No subdevice was opened and no PM operation was performed in this investigation.
 
-## Current offline result — v2
+## Current offline result — v2 (r2)
 
+* r1 (`91c4eb0f…`) had a topology-guard bug found on the phone: it compared
+  `of_node_full_name()` with the full DT path, but on this kernel `full_name`
+  holds only the last component (`camera-ois-main@e`). r1 therefore refused with
+  `ENODEV` before any I2C or attempt. r2 compares the `%pOF` full path instead.
 * Real ARM64 Android clang17 r487747c compile, modpost and link: **PASS**.
 * Workspace-relative artifact:
-  `build/ois-diagnostic/id-only-candidate/module/ois_diag.ko`
-  (354920 bytes, unsigned, module version 2).
-* SHA256: `91c4eb0fc5c253b0eef4a253df580c367b231bb31126088acfc94c62e77d114f`.
-* `BUILD.json`, `ABI-VERIFY.json`, `TESTS.json` and build log are in that candidate
-  directory; detailed host/checkpatch logs are in `build/ois-diagnostic/id-only-review/`.
+  `build/ois-diagnostic/id-only-candidate-r2/module/ois_diag.ko`
+  (355016 bytes, unsigned, module version 2).
+* SHA256: `304d0ea2b2dde9f3302a2146c5661d85657e9333502e7b1096a12f0d12493809`.
+* `BUILD.json`, `ABI-VERIFY.json` and build log are in that candidate directory;
+  r1 host/checkpatch/negative-test logs are in `build/ois-diagnostic/id-only-review/`
+  and r2 reran checkpatch, build, ABI verification and both host-test compilers.
   Exact helper-source hashes qualify this build; the recorded source HEAD is
   pre-commit context, not a claim that a whole kernel was rebuilt.
 * 19 modversion records (18 imports plus `module_layout`) match the preserved
@@ -186,15 +194,40 @@ properties). No subdevice open, module load, PM/power change, I2C or reboot.
 
 Private raw output: `build/ois-diagnostic/runtime-preflight-v2/`.
 
+## Hardware attempt (2026-11-01)
+
+Owner authorized free ADB/fastboot use with exclusive device access. Slot B only;
+**no partition was written**. Two normal reboots cleared v1 and then v2-r1.
+
+1. Live config matched the build reference except the expected external
+   imgsensor sensor-list string. r2 hash verified on the phone before `insmod
+   enable_sample=1`; status `protocol=2`, taint unchanged.
+2. Guard check while suspended: `-EHOSTDOWN`, all topology gates passed,
+   attempt unused.
+3. Open Camera streamed Android camera 3 (OV64B, sensor4, I2C-4); frame
+   counters advanced. Holding `/dev/v4l-subdev33` (`dw9781c 4-000a`) open made
+   the client runtime-active (usage 1); dmesg showed only `dw9781c_power_on`.
+4. One request: `[0x70,0x00]` write + two-byte read at 7-bit `0x0a`.
+   Result `last_error=-6` (**ENXIO**): `i2c-mt65xx` returns this for an ACK error.
+   `valid_mask=0`.
+5. Hold released to suspended; OV64B kept streaming; taint, SELinux and slot
+   unchanged; staging files removed. Helper remains loaded (`attempted=1`) until
+   the next reboot.
+
+**Interpretation:** nothing acknowledged `0x0a` on I2C-4 with OV64B powered.
+Consistent with: no OIS chip fitted; a chip whose supply is neither always-on
+nor shared with OV64B's rails; or a chip at a different address (DT `reg` is
+`0x0e`; the stock driver overrides to `0x0a`). It does not prove absence and
+says nothing about another lens. Private raw records:
+`build/ois-diagnostic/runtime-v2/`.
+
 ## Next step / research ownership
 
-Obtain specific owner permission for fresh read-only device preflight before
-any phone operation. Re-establish actual boot/kernel/config/module identity,
-protection state, topology, consumers and power prerequisites. Then separately
-review any PM-open/camera-power/one-word experiment and its pointer-write risk.
-No normal reboot, insertion, register read or stock initialization is authorized
-by a successful offline build. Never use an unsuffixed/implicit flash target or
-write Slot A; no flashing is needed or authorized by this diagnostic preparation.
+Further software probing has low expected value. Distinguishing "absent" from
+"unpowered/other address" would need either another bounded single-address
+attempt (e.g. `0x0e`, with its own unknown-device pointer-write risk) or a
+teardown/board inspection. No stock OIS initialization should be used.
+Never use an unsuffixed/implicit flash target or write Slot A.
 
 Canonical research receives the bounded source findings and remaining unknowns
 under `reverse-engineering/camera-stack/dw9781c-ois/` on local `main`. Its existing
