@@ -165,6 +165,27 @@ records remain under `build/ois-diagnostic/runtime/`; do not publish raw device
 identifiers. The original source/readme/build evidence remains recoverable in Git
 and the preserved v1 output; v2 does not overwrite it.
 
+## Read-only device preflight (2026-10-31)
+
+Owner-authorized, exclusive-use, read-only ADB checks (sysfs/procfs/live DT,
+properties). No subdevice open, module load, PM/power change, I2C or reboot.
+
+* Slot B, c29+ kernel, SELinux enforcing, verified-boot property green.
+* v1 helper still loaded `[permanent]`: `enabled=0 attempted=0`; it cannot be
+  enabled. Loading v2 would first need a separately approved normal reboot.
+* OIS client `4-000e` (V4L2 entity `dw9781c 4-000a`): runtime **suspended**,
+  usage 0, **zero runtime-active time this boot**; no process held its subdevice.
+  The I2C-4 adapter was suspended too. The v2 guard would refuse (`-EHOSTDOWN`).
+* Supplies: `vdd` is `regulator-dummy`; `rst` is `camera-common-dovdd`.
+  A `camera-common-oisvdd` node does exist, but like `dovdd` it is a
+  `regulator-fixed` 1.8 V with **no enable GPIO**. It has no consumers, and no
+  supply on camera I2C buses 2/4/7 references its phandle.
+* So the live DT has **no software-controlled OIS power path**. Whether the chip
+  is powered (e.g. tied to an always-on or camera-switched rail) is unknown.
+  A PM-active state would change only regulator bookkeeping.
+
+Private raw output: `build/ois-diagnostic/runtime-preflight-v2/`.
+
 ## Next step / research ownership
 
 Obtain specific owner permission for fresh read-only device preflight before
