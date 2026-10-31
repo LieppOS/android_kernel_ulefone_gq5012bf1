@@ -6187,18 +6187,7 @@ static void mtk_dsi_cmdq_pack_gce(struct mtk_dsi *dsi, struct cmdq_pkt *handle,
 	DDPINFO("%s +,\n", __func__);
 
 	mtk_dsi_power_keep_gce(dsi, handle, true);
-	/*
-	 * In video mode DSI_BUSY tracks the running video stream, not the
-	 * command queue, so waiting for it to clear before a DCS write never
-	 * completes and burns the full poll timeout; the CMDQ thread watchdog
-	 * then fires on every dynamic-fps switch.  The caller already
-	 * serializes the write against the frame (EOF wait), and the
-	 * post-command poll below still waits for the command itself.
-	 * Command mode keeps the pre-write idle check.
-	 */
-	if (mtk_dsi_is_cmd_mode(comp) &&
-	    (!panel_ext || !panel_ext->params ||
-	     !panel_ext->params->vdo_mix_mode_en))
+	if (!panel_ext || !panel_ext->params || !panel_ext->params->vdo_mix_mode_en)
 		mtk_dsi_poll_for_idle(dsi, handle);
 
 	if (mtk_dsi_is_cmd_mode(comp) && dsi->driver_data->require_phy_reset)
@@ -9835,6 +9824,27 @@ void mtk_dsi_send_switch_cmd_nothing(struct mtk_dsi *dsi,
 
 	if (lcm_cmd_count > MAX_TX_CMD_NUM_PACK) {
 		pr_info("%s,out of mtk_ddic_dsi_cmd\n", __func__);
+		return;
+	}
+	if (!lcm_cmd_count)
+		return;
+
+	/*
+	 * VFP-only changes leave the video stream running. The normal DSI
+	 * command queue waits for that stream's BUSY bit and toggles DSI_START,
+	 * so merely dropping its pre-write idle poll is not sufficient.
+	 * Use the existing VM sender: it inserts DCS commands in VFP and waits
+	 * for VM_CMD_DONE without restarting the video engine. The caller's
+	 * frame-EOF serialization and subsequent VFP update remain unchanged.
+	 */
+	if (!mtk_dsi_is_cmd_mode(&dsi->ddp_comp)) {
+		for (i = 0; i < lcm_cmd_count; i++) {
+			dfps_cmd = &params->dyn_fps.dfps_cmd_table[i];
+			if (dfps_cmd->src_fps == 0 ||
+			    drm_mode_vrefresh(old_mode) == dfps_cmd->src_fps)
+				mipi_dsi_dcs_write_gce(dsi, handle,
+					dfps_cmd->para_list, dfps_cmd->cmd_num);
+		}
 		return;
 	}
 

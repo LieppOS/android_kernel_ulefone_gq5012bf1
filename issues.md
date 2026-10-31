@@ -223,122 +223,133 @@ The dtbo partition is not touched by this fix.
 
 ---
 
-## 2. CMDQ / display timeouts on refresh-rate switches (fix built, device validation pending)
+## 2. CMDQ / display timeouts on refresh-rate switches (previous candidate FAILED; VM correction offline-built)
 
-### Symptom
+**Not hardware-fixed.** The `b62bc26e8` pre-poll-only candidate was tested with
+owner authorization on 2026-10-31, failed, and was rolled back. The revised
+VM-command implementation below is built/tested offline only, not packaged,
+signed, flashed or device-validated.
 
-The captured boot contains **164 real `mtk_crtc_cmdq_timeout_cb`
-callbacks** (328 log lines because each callback is logged twice), i.e.
-one CMDQ timeout per 60↔120 Hz switch. The timeout is the 1 s CMDQ
-thread watchdog (`timeout:0x3e8`), and the display keeps working; this
-is a latency/reliability defect, not a boot blocker.
+### Failed device test and completed rollback
 
-Earlier notes also listed:
+The earlier candidate (`mediatek-drm.ko` SHA256
+`67e54bb3871aab18a1e51c9431c9fe1f882f072db7faa02c8ad3b7f21eebbea4`) booted but
+still produced 12 matching timeout **marker lines** in each direction of the
+first 60/120 Hz cycle. Actual display modes were 120.00001 and 60.0 Hz. Marker
+lines are not unique callbacks: pre-dumps, duplicate callback messages and
+queued-packet dumps must not be counted as independent failures. The owner
+reported display malfunction and requested immediate rollback.
 
-- `cmdq_mbox_create` fails with `-19` (`ENODEV`) for index 1.
-- The live `gce-event-names` list is missing several names the driver
-  can request (e.g. `disp_token_sodi0`, `disp_rdma0_eof0`,
-  `disp_wdma0_eof0`, `disp_dsi0_cmd_done0`).
+Settings restoration succeeded. The previous brightness pair was restored to
+Slot B, Android boot completed, both partition hashes matched the originals,
+and the captured Slot A vendor_boot/vbmeta hashes were unchanged. Boot properties
+reported green/enforcing (not an independent hardware-attestation claim).
+Current restored images:
 
-Both are real but **not** the cause of the timeouts. Event lookup is by
-name, so absent names do not shift indices, and the display path that
-times out does not use the missing events. `cmdq_mbox_create -19` is
-also benign on this boot.
+- `vendor_boot_b-brightness-avb.img`:
+  `bc6718f2bd63888b05a5da8a658ed748589a0cb7b2eb8bb341243e18640ee0dc`
+- `vbmeta_b-brightness.img`:
+  `21ea74788eb308452befb9c6ffe82fcec14d3f1ad1e3cd0cf1cdef6690f35f70`
 
-### Root cause (decoded from the CMDQ dumps)
+The rejected package remains only as evidence; **do not flash it again**.
+`build/cmdq-vdo-poll/FLASH-PREP-cmdq-vdo-poll.json` records failure/rollback,
+`ROLLBACK-RECEIPT.json` verifies restoration, and the existing flash helper now
+refuses that rejected candidate. The helper also requires explicit mode/serial,
+checks current installed hashes, restores exact settings on failures, resolves
+actual mode refresh rates, and establishes 60 Hz before requesting a 120 Hz
+transition. The failed test's final full packet capture was not recovered;
+its exact post-patch stalled PC is therefore not claimed.
 
-Every refresh-rate change runs `mtk_dsi_send_switch_cmd_nothing()` →
-`mtk_dsi_cmdq_pack_gce()` to send the panel's `0x6C` frame-rate command.
-Before writing the command, `mtk_dsi_cmdq_pack_gce()` calls
-`mtk_dsi_poll_for_idle()`, which polls `DSI_INTSTA` bit 31
-(`DSI_BUSY`) through the GCE timer event (997).
+### Evidence-backed source diagnosis
 
-In video mode `DSI_BUSY` tracks the continuously running video stream,
-not the DCS command queue. It does not stay clear long enough for the
-GCE poll, so the poll runs to its full timeout and the 1 s CMDQ thread
-watchdog fires first. The decoded packet shows exactly this:
+Despite `cmd` in its filename/compatible, the VTDR6115 panel sets
+`MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_SYNC_PULSE` in its source.
+VFP-only refresh changes leave this video stream running. The old call path was
+`mtk_dsi_vdo_timing_change()` -> `mtk_dsi_send_switch_cmd_nothing()` ->
+`mtk_dsi_cmdq_pack_gce()`.
 
-- 133/164 callbacks are parked at the pre-write poll's event-997 wait
-  (`curr inst ... wait for event 997`, `value:0`);
-- 75 callbacks show `Not Available` because the second switch packet is
-  still queued behind the first;
-- 1 callback is at another instruction.
+A newly captured **restored-baseline** packet shows:
 
-After the watchdog fires the packet continues, writes the command,
-toggles `DSI_START` 0/1/0, and the **post-command** poll of the same
-`DSI_BUSY` bit completes immediately (`event 997` cleared within the
-same packet dump). So the pre-write poll is the only failing wait.
+- frame EOF wait on event 162;
+- a poll of `0x1401a00c` (`DSI_INTSTA`) masked by `0x80000000` (`DSI_BUSY`);
+- timer-event-997 wait at packet offset 0xa8 in that pre-write poll;
+- later normal-command writes and `DSI_START` values 0/1/0;
+- another poll of the same stream BUSY bit after the start sequence.
 
-The trigger loop on GCE thread 3 also waits on event 162
-(`disp_dsi0_eof`) and clears it, while the mode-switch packet waits on
-the same event with `wait_no_clear`. That race can delay a packet by
-one frame, but it is not the 1 s timeout; the pre-write poll is.
+The failed patch removed only the first poll. It retained normal command-queue
+writes, normal-engine START and the second stream-BUSY poll. That does not turn
+a normal command transaction into a video-mode command transaction. The earlier
+assertion that the post-poll was necessarily safe was unsupported.
 
-Refresh-rate switching itself is not broken: the panel accepts the
-`0x6C` command and the mode change completes. The defect is the 1 s
-stall and the error log on each switch.
+Also, `mtk_dsi_cmdq_poll()` passes `count=0xffff`. In
+`cmdq_pkt_poll_timeout_reuse()`, U16_MAX explicitly disables the loop limit:
+this is **unbounded polling**, not a 65535-iteration timeout. The separate CMDQ
+thread watchdog remains enabled; its log is not proof of normal completion.
 
-### Fix
+The existing `mipi_dsi_dcs_write_gce()` already distinguishes the two engines:
+its video branch programs driver-specific VM command registers, toggles only
+`VM_CMD_START` (bit 16), clears and polls `VM_CMD_DONE` (bit 5), without a stream
+BUSY poll. This is also the existing video brightness sender. Video brightness
+and VFP mode changes both use `CLIENT_DSI_CFG`, preserving channel serialization.
 
-`drivers/gpu/drm/mediatek/mediatek_v2/mtk_dsi.c`:
-`mtk_dsi_cmdq_pack_gce()` now runs the pre-write idle poll only in
-command mode:
+### Revised source correction (offline candidate)
 
-```c
-if (mtk_dsi_is_cmd_mode(comp) &&
-    (!panel_ext || !panel_ext->params ||
-     !panel_ext->params->vdo_mix_mode_en))
-        mtk_dsi_poll_for_idle(dsi, handle);
+In `drivers/gpu/drm/mediatek/mediatek_v2/mtk_dsi.c`:
+
+- VDO DFPS commands go through the existing `mipi_dsi_dcs_write_gce()` VM path;
+  source-FPS conditions are checked per table entry, in order.
+- Empty command tables emit nothing.
+- Command-mode packing and its pre/post idle checks are retained; the ineffective
+  `b62bc26e8` pre-poll-only change is undone.
+- The caller's frame EOF wait, VFP programming, trigger loop, panel tables,
+  brightness fallback and timeout diagnostics are unchanged. No new register
+  values or exported interfaces are invented.
+
+### Actual offline validation
+
+- New `tools/ulefone/gq5012bf1/tests/display/` tests extract the real sender,
+  packing, VM and mode-selection function bodies/constants. Recording host
+  shims expose emitted operations; they do not execute Linux/GCE or a panel.
+- The old candidate fails the VDO routing regression. Revised code passes
+  **4/4 normal and 4/4 ASan/UBSan** groups: 60/90/120 payload/VM completion,
+  per-entry source-FPS/order, absent/empty inputs, and retained command/mixed
+  mode checks. Production patch checkpatch: zero errors/warnings.
+- Real ARM64 Clang r487747c compile, modpost and module linkage PASS using the
+  established C29/C56 recipes (including the prior ESD flag configuration).
+  Only `mtk_dsi.o` differs from the brightness baseline; the other two rebuilt
+  objects are byte-identical. No baseline outputs/config were rewritten.
+- Actual ELF imports **546/546** and exports **56/56** match the diagnostic
+  reference. The old receipt incorrectly called its 56 exported `SYMBOL_CRC`
+  records imports. Vermagic/dependencies/name/license are unchanged, no new
+  exports. All 128 named KCFI type IDs and eight selected DSI entry type words
+  match the brightness reference; this is scoped offline ABI evidence only.
+- New module (5,681,872 bytes):
+  `7249d78681e9090c9996c4ae6f96549851aaa28625781bb9b8ca21e7c1e1467a`.
+
+Reproduce host checks from the kernel repository:
+
+```sh
+python3 -B tools/ulefone/gq5012bf1/tests/display/run-tests.py \
+  --work-dir "$PWD/../../../../build/cmdq-vdo-poll/offline-tests"
 ```
 
-The post-command poll is unchanged, so the driver still waits for the
-DCS command itself to complete. Command-mode panels keep the original
-pre-write check, and the existing `vdo_mix_mode_en` guard is preserved.
-The brightness fallback is unaffected: `set_backlight_cmdq` goes through
-`mipi_dsi_dcs_write_gce` → `mtk_dsi_cmdq_gce`, which never called the
-pack path's pre-write poll.
+Receipts: `build/cmdq-vdo-poll/receipt-vm-dfps.json`,
+`offline-review-vm-dfps.json`, `offline-tests/{before,after}-fix.log`.
+The existing tagged builder accepts a fresh `--tag` and refuses overwrites.
+Private read-only captures are under
+`build/cmdq-vdo-poll/readonly-diagnostics-20261031T112212Z/`;
+no raw logs/device identifiers belong in source or public research.
+**Research-ready handoff: not yet integrated into the canonical research repo.**
 
-### Build / package (offline, not flashed)
+### Remaining proof / limits
 
-- `mediatek-drm.ko`: `67e54bb3871aab18a1e51c9431c9fe1f882f072db7faa02c8ad3b7f21eebbea4`
-  (5,681,696 bytes), built from the current tree with the brightness
-  fallback included.
-- Import CRCs identical to the running diagnostic module (56/56).
-- `vendor_boot_b-cmdq-vdo-poll-avb.img`:
-  `de32975bc82546c3a23b1c368a9ca69e444fba60da5c71774701aea33d8e8ed4`
-- `vbmeta_b-cmdq-vdo-poll.img`:
-  `cb788f4f847b3be398d31fbc069a28b7c58bae2a1028230b603f26ba57d1233b`
-- Battery module preserved (`6a017942441ed10ec9e001cd4fe6aef405e64acff221cc30054272e1032631a2`),
-  DTB and `vendor_ramdisk01` byte-identical to the validated brightness
-  package. AVB footer and vbmeta signature verified offline.
-
-### Validation plan
-
-Flash `vendor_boot_b` + `vbmeta_b` to Slot B only after explicit
-authorization, then:
-
-1. Boot and confirm `screen_brightness` ramps and restores as in
-   section 5 (brightness fallback preserved).
-2. Switch 60↔120 Hz repeatedly from Settings and confirm the mode
-   actually changes.
-3. Check dmesg for `mtk_crtc_cmdq_timeout_cb`: expected count is zero
-   for the switches performed; the trigger-loop event-162 race may
-   still show as a one-frame delay but must not log a CMDQ timeout.
-4. Confirm battery capacity still follows the live gauge and the
-   MT6369 AUX/headset path is unchanged.
-
-Rollback: the currently flashed brightness pair,
-`vendor_boot_b-brightness-avb.img` (`bc6718f2bd63888b05a5da8a658ed748589a0cb7b2eb8bb341243e18640ee0dc`)
-and `vbmeta_b-brightness.img` (`21ea74788eb308452befb9c6ffe82fcec14d3f1ad1e3cd0cf1cdef6690f35f70`).
-
-### Separate follow-ups
-
-- Event-162 trigger-loop race: `wait_no_clear` in the mode-switch
-  packet versus the trigger loop's clear. Latency only; do not change
-  the trigger loop as part of this fix.
-- Missing `gce-event-names` / `cmdq_mbox_create -19`: separate DT
-  cleanup, not required for the timeout fix. Do not mix it into the
-  brightness or CMDQ validation flash.
+The phone was disconnected after the authorized read-only capture. No new image
+was prepared or flashed. A future separately authorized package/test must check
+VM completion, repeated 60/90/120 transitions, visual stability/brightness,
+suspend/wake and retained battery/headset behavior. Failure means restore the
+known brightness pair, not suppress timeouts or delete further completion checks.
+Event-162 sharing and missing event names/client-1 ENODEV remain separate
+questions; no bounded latency guarantee or blanket harmlessness is claimed here.
 
 ---
 
