@@ -284,3 +284,74 @@ unaffected by this branch:
 - Unplug/replug is clean; `system_server` PID 1855 stable; crash count 6.
 
 Commits: `e9eadab7e`, `02d1effb7`, `b91b87ad2`, `b21bde9d9`.
+
+## 5. USER. DISPLAY HDR, Display Brightness does nothing AND refresh rate in settings
+
+### Brightness root cause (2026-10-31)
+
+Brightness writes reach the LED driver but are dropped before any DSI
+command. `mtk_drm_setbacklight()` selects `DSI_SET_BL` for the LED path
+(`cfg_flag = 1 << SET_BACKLIGHT_LEVEL`) and for the composer/CSC_BL path
+(`mtk_dsi_set_backlight()`). `mtk_dsi_io_cmd()` handles `DSI_SET_BL` by
+calling `panel_ext->funcs->set_backlight_pack` only:
+
+- `drivers/gpu/drm/mediatek/mediatek_v2/mtk_dsi.c:10758`
+- running `mediatek-drm.ko`: `ldr x8, [x8, #0x18]`; `cbz` skips when NULL.
+
+This panel only provides slot 2, `set_backlight_cmdq`:
+
+- `drivers/gpu/drm/panel/panel-ky-vtdr6115-dphy-cmd.c:750`
+- running `panel_ky_vtdr6115_dphy_cmd.ko` `ext_funcs+0xe0` -> `.text+0x12c8`
+  (`lcm_setbacklight_cmdq`); `ext_funcs+0xe8` (slot 3) is NULL.
+
+Result: `lcm_setbacklight_cmdq` is never called (dmesg count 0), no DCS
+`0x51` is sent, and the panel stays at the init value written by
+`lcm_panel_init()` (`0x51 0x07 0xFF`, 2047). The LED class value still
+changes, so the slider appears to work but the panel does not.
+
+Fix (applied on `integration/brightness-cmdq-fallback`, flashed to Slot B,
+2026-10-31): in `mtk_dsi_io_cmd()` `DSI_SET_BL`, fall back to slot 2 when
+slot 3 is absent:
+
+```c
+else if (panel_ext->funcs->set_backlight_cmdq)
+    panel_ext->funcs->set_backlight_cmdq(dsi,
+        mipi_dsi_dcs_write_gce, handle, *(int *)params);
+```
+
+`mediatek-drm.ko` was rebuilt from the saved C29 recipes using the C56
+diag source plus this fallback (sha256
+`8e9f911d09672dd7a31d9ed4da059b74b0cfb806379e62e7b49ce25d556fa311`;
+import and export CRCs identical to the running module). The new
+vendor_boot_b/vbmeta_b were re-signed and flashed to Slot B; the
+dynamic-FCC `mt6375-battery.ko`, DTB, and recovery ramdisk are
+byte-identical to the battery-fix image.
+
+Validation (Slot B, `green` / `enforcing` / locked):
+
+- 486 `lcm_setbacklight_cmdq` entries in dmesg (0 before the fix).
+- The boot brightness ramp includes direct `200 0 200` and
+  `2047 7 255` calls, proving `DSI_SET_BL` reaches the panel callback.
+- Framework path end-to-end: `settings put system screen_brightness 50`
+  (mode 0) ramps the panel down to 398
+  (`lcm_setbacklight_cmdq 398 1 142`); restoring 255 ramps back to
+  2047. The brightness slider now changes the panel.
+- Sysfs `lcd-backlight/brightness` is a separate path: `leds_mtk`
+  applies it directly ("Set lcd-backlight directly") and bypasses
+  `DSI_SET_BL`, so it is not a test of the fallback.
+- Battery regression check: `charge_full` equals the 3rd-gauge FCC x
+  1000 (8,822,000 uAh at 8822 mAh); `mt6375_battery` loaded;
+  `system_server` alive; tombstones unchanged at 64.
+
+Separate, not causal: CMDQ timeouts recur during brightness ramps and
+mode switches (`mtk_crtc_cmdq_timeout_cb`, crtc 0, thread 6). This boot
+shows one at 48.016630 s (reported at 48.84 s) and more at 127-129 s
+and 219-232 s, with `mtk_drm_esd_testing_process` in the timeout
+stack. The brightness callback was previously skipped before a DSI
+command was queued, so fixing CMDQ alone would not restore brightness.
+Refresh-rate behavior and the CMDQ/DT event gap remain separate open
+items (section 2).
+
+## 6. Fm Radio
+## 7. 5G, NoVR option. Make show numbers of the SIM cards.
+## 8.
