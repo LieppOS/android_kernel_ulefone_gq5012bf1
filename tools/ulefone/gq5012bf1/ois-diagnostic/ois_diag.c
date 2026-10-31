@@ -78,8 +78,8 @@ static int transfer_word(void *context, const unsigned char pointer[2],
 		},
 	};
 
-	/* Defense in depth: even an internal caller cannot select other words. */
-	if (selector[0] != 0x70 || (selector[1] != 1 && selector[1] != 2))
+	/* Defense in depth: even an internal caller cannot select another word. */
+	if (!ois_diag_pointer_allowed(selector))
 		return -EINVAL;
 	return i2c_transfer(client->adapter, messages, ARRAY_SIZE(messages));
 }
@@ -147,9 +147,9 @@ static int status_get(char *buffer, const struct kernel_param *parameter)
 	mutex_lock(&diag_lock);
 	/* Reading status reports cached results only; it never touches the bus. */
 	length = scnprintf(buffer, PAGE_SIZE,
-			   "ready=%u enabled=%u attempted=%u last_error=%d valid_mask=0x%x fw_version=0x%04x fw_date=0x%04x identity_proven=0 mechanical_ois_proven=0\n",
-			   ready, enable_sample, attempted, last_error, result.valid_mask,
-			   result.fw_version, result.fw_date);
+			   "protocol=%u ready=%u enabled=%u attempted=%u last_error=%d valid_mask=0x%x model_word=0x%04x identity_proven=0 mechanical_ois_proven=0\n",
+			   OIS_DIAG_PROTOCOL, ready, enable_sample, attempted,
+			   last_error, result.valid_mask, result.model_word);
 	mutex_unlock(&diag_lock);
 	return length;
 }
@@ -164,7 +164,7 @@ static const struct kernel_param_ops status_ops = {
 
 module_param_cb(sample, &sample_ops, NULL, 0200);
 MODULE_PARM_DESC(sample,
-		 "One-shot fixed FW metadata request; requires exact risk-acknowledgement token");
+		 "One-shot fixed model-word request; requires exact ID-risk acknowledgment");
 module_param_cb(status, &status_ops, NULL, 0400);
 MODULE_PARM_DESC(status, "Cached result only; no I2C access on read");
 
@@ -182,4 +182,5 @@ module_init(ois_diag_init);
 /* Deliberately no unload path. Keep until an independently approved reboot. */
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("LieppOS contributors");
-MODULE_DESCRIPTION("Guarded, passive-by-default DW9781C FW metadata diagnostic");
+MODULE_VERSION("2");
+MODULE_DESCRIPTION("Guarded, passive-by-default candidate OIS model-word diagnostic");

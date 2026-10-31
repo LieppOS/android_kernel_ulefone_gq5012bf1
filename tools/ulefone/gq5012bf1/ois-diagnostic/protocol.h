@@ -12,13 +12,14 @@
 #endif
 
 /* No caller-selectable address, register, length or register-data payload. */
+#define OIS_DIAG_PROTOCOL 2
 #define OIS_DIAG_BUS 4
 #define OIS_DIAG_ADDR 0x0a
-#define OIS_DIAG_ACK "I_ACCEPT_REGISTER_POINTER_BUS_WRITES"
+#define OIS_DIAG_MODEL_REG 0x7000
+#define OIS_DIAG_ACK "I_ACCEPT_UNIDENTIFIED_DEVICE_ID_POINTER_WRITE"
 
 struct ois_diag_result {
-	unsigned short fw_version;
-	unsigned short fw_date;
+	unsigned short model_word;
 	unsigned int valid_mask;
 };
 
@@ -43,32 +44,34 @@ static inline int ois_diag_gate(int ready, int enabled, int privileged,
 	return 0;
 }
 
-/* These are FW metadata registers, NOT a documented silicon-ID pair. */
+static inline int ois_diag_pointer_allowed(const unsigned char pointer[2])
+{
+	return pointer[0] == (OIS_DIAG_MODEL_REG >> 8) &&
+		pointer[1] == (OIS_DIAG_MODEL_REG & 0xff);
+}
+
+/*
+ * One candidate firmware/model identity word, NOT an immutable silicon ID.
+ * Return raw data only: no automatic detection verdict or fallback register.
+ */
 static inline int ois_diag_collect(ois_diag_transfer_fn transfer, void *context,
 				   struct ois_diag_result *result)
 {
-	unsigned int i;
+	const unsigned char pointer[2] = {
+		OIS_DIAG_MODEL_REG >> 8, OIS_DIAG_MODEL_REG & 0xff,
+	};
+	unsigned char response[2] = { 0, 0 };
+	int ret;
 
 	memset(result, 0, sizeof(*result));
-	for (i = 0; i < 2; i++) {
-		const unsigned char pointer[2] = { 0x70, (unsigned char)(i + 1) };
-		unsigned char response[2] = { 0, 0 };
-		unsigned short value;
-		int ret;
-
-		ret = transfer(context, pointer, response);
-		if (ret < 0)
-			return ret;
-		/* Unlike the reference driver, reject partial/nonexact transfers. */
-		if (ret != 2)
-			return -EIO;
-		value = ((unsigned short)response[0] << 8) | response[1];
-		if (i == 0)
-			result->fw_version = value;
-		else
-			result->fw_date = value;
-		result->valid_mask |= 1U << i;
-	}
+	ret = transfer(context, pointer, response);
+	if (ret < 0)
+		return ret;
+	/* Unlike the OEM helper, reject partial/nonexact message counts. */
+	if (ret != 2)
+		return -EIO;
+	result->model_word = ((unsigned short)response[0] << 8) | response[1];
+	result->valid_mask = 1;
 	return 0;
 }
 #endif
