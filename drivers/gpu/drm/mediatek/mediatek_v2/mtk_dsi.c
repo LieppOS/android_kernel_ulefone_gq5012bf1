@@ -6187,7 +6187,18 @@ static void mtk_dsi_cmdq_pack_gce(struct mtk_dsi *dsi, struct cmdq_pkt *handle,
 	DDPINFO("%s +,\n", __func__);
 
 	mtk_dsi_power_keep_gce(dsi, handle, true);
-	if (!panel_ext || !panel_ext->params || !panel_ext->params->vdo_mix_mode_en)
+	/*
+	 * In video mode DSI_BUSY tracks the running video stream, not the
+	 * command queue, so waiting for it to clear before a DCS write never
+	 * completes and burns the full poll timeout; the CMDQ thread watchdog
+	 * then fires on every dynamic-fps switch.  The caller already
+	 * serializes the write against the frame (EOF wait), and the
+	 * post-command poll below still waits for the command itself.
+	 * Command mode keeps the pre-write idle check.
+	 */
+	if (mtk_dsi_is_cmd_mode(comp) &&
+	    (!panel_ext || !panel_ext->params ||
+	     !panel_ext->params->vdo_mix_mode_en))
 		mtk_dsi_poll_for_idle(dsi, handle);
 
 	if (mtk_dsi_is_cmd_mode(comp) && dsi->driver_data->require_phy_reset)

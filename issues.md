@@ -223,40 +223,122 @@ The dtbo partition is not touched by this fix.
 
 ---
 
-## 2. CMDQ / display timeouts (open, pre-existing)
+## 2. CMDQ / display timeouts on refresh-rate switches (fix built, device validation pending)
 
 ### Symptom
 
-The boot inspected during the health sweep contained 138 `cmdq timeout`
-messages. Additional evidence:
+The captured boot contains **164 real `mtk_crtc_cmdq_timeout_cb`
+callbacks** (328 log lines because each callback is logged twice), i.e.
+one CMDQ timeout per 60↔120 Hz switch. The timeout is the 1 s CMDQ
+thread watchdog (`timeout:0x3e8`), and the display keeps working; this
+is a latency/reliability defect, not a boot blocker.
+
+Earlier notes also listed:
 
 - `cmdq_mbox_create` fails with `-19` (`ENODEV`) for index 1.
-- The GCE event list is missing names required by the display paths:
-  `disp_token_sodi0`, `disp_rdma0_eof0`, `disp_wdma0_eof0`.
-- A previous boot's ramoops contains `mtk_crtc_cmdq_timeout` at 188 s.
+- The live `gce-event-names` list is missing several names the driver
+  can request (e.g. `disp_token_sodi0`, `disp_rdma0_eof0`,
+  `disp_wdma0_eof0`, `disp_dsi0_cmd_done0`).
 
-Display output still works and the device does not panic, so this is a
-latency/reliability defect rather than an immediate boot blocker.
+Both are real but **not** the cause of the timeouts. Event lookup is by
+name, so absent names do not shift indices, and the display path that
+times out does not use the missing events. `cmdq_mbox_create -19` is
+also benign on this boot.
 
-### Root cause
+### Root cause (decoded from the CMDQ dumps)
 
-The board overlay / base DTB does not describe every GCE event used by
-the display driver. `cmdq_mbox_create()` cannot find the mailbox for
-index 1 and returns `-19`; the missing `gce-event-names` entries then
-force timeout-based fallbacks in the display command queue.
+Every refresh-rate change runs `mtk_dsi_send_switch_cmd_nothing()` →
+`mtk_dsi_cmdq_pack_gce()` to send the panel's `0x6C` frame-rate command.
+Before writing the command, `mtk_dsi_cmdq_pack_gce()` calls
+`mtk_dsi_poll_for_idle()`, which polls `DSI_INTSTA` bit 31
+(`DSI_BUSY`) through the GCE timer event (997).
 
-This is a platform DT/display integration gap. It is unrelated to the
-battery gauge and unrelated to the MT6369 AUX/headset work.
+In video mode `DSI_BUSY` tracks the continuously running video stream,
+not the DCS command queue. It does not stay clear long enough for the
+GCE poll, so the poll runs to its full timeout and the 1 s CMDQ thread
+watchdog fires first. The decoded packet shows exactly this:
 
-### Status
+- 133/164 callbacks are parked at the pre-write poll's event-997 wait
+  (`curr inst ... wait for event 997`, `value:0`);
+- 75 callbacks show `Not Available` because the second switch packet is
+  still queued behind the first;
+- 1 callback is at another instruction.
 
-**Documented, not fixed in this pass.** The battery flash must not be
-mixed with an unvalidated display/CMDQ change.
+After the watchdog fires the packet continues, writes the command,
+toggles `DSI_START` 0/1/0, and the **post-command** poll of the same
+`DSI_BUSY` bit completes immediately (`event 997` cleared within the
+same packet dump). So the pre-write poll is the only failing wait.
 
-Next step: audit the `gce-event-names` list against the events required
-by the MT6878 display driver and the platform reference DTS, add the
-missing events, and validate in a separate display campaign with a
-dedicated rollback path.
+The trigger loop on GCE thread 3 also waits on event 162
+(`disp_dsi0_eof`) and clears it, while the mode-switch packet waits on
+the same event with `wait_no_clear`. That race can delay a packet by
+one frame, but it is not the 1 s timeout; the pre-write poll is.
+
+Refresh-rate switching itself is not broken: the panel accepts the
+`0x6C` command and the mode change completes. The defect is the 1 s
+stall and the error log on each switch.
+
+### Fix
+
+`drivers/gpu/drm/mediatek/mediatek_v2/mtk_dsi.c`:
+`mtk_dsi_cmdq_pack_gce()` now runs the pre-write idle poll only in
+command mode:
+
+```c
+if (mtk_dsi_is_cmd_mode(comp) &&
+    (!panel_ext || !panel_ext->params ||
+     !panel_ext->params->vdo_mix_mode_en))
+        mtk_dsi_poll_for_idle(dsi, handle);
+```
+
+The post-command poll is unchanged, so the driver still waits for the
+DCS command itself to complete. Command-mode panels keep the original
+pre-write check, and the existing `vdo_mix_mode_en` guard is preserved.
+The brightness fallback is unaffected: `set_backlight_cmdq` goes through
+`mipi_dsi_dcs_write_gce` → `mtk_dsi_cmdq_gce`, which never called the
+pack path's pre-write poll.
+
+### Build / package (offline, not flashed)
+
+- `mediatek-drm.ko`: `67e54bb3871aab18a1e51c9431c9fe1f882f072db7faa02c8ad3b7f21eebbea4`
+  (5,681,696 bytes), built from the current tree with the brightness
+  fallback included.
+- Import CRCs identical to the running diagnostic module (56/56).
+- `vendor_boot_b-cmdq-vdo-poll-avb.img`:
+  `de32975bc82546c3a23b1c368a9ca69e444fba60da5c71774701aea33d8e8ed4`
+- `vbmeta_b-cmdq-vdo-poll.img`:
+  `cb788f4f847b3be398d31fbc069a28b7c58bae2a1028230b603f26ba57d1233b`
+- Battery module preserved (`6a017942441ed10ec9e001cd4fe6aef405e64acff221cc30054272e1032631a2`),
+  DTB and `vendor_ramdisk01` byte-identical to the validated brightness
+  package. AVB footer and vbmeta signature verified offline.
+
+### Validation plan
+
+Flash `vendor_boot_b` + `vbmeta_b` to Slot B only after explicit
+authorization, then:
+
+1. Boot and confirm `screen_brightness` ramps and restores as in
+   section 5 (brightness fallback preserved).
+2. Switch 60↔120 Hz repeatedly from Settings and confirm the mode
+   actually changes.
+3. Check dmesg for `mtk_crtc_cmdq_timeout_cb`: expected count is zero
+   for the switches performed; the trigger-loop event-162 race may
+   still show as a one-frame delay but must not log a CMDQ timeout.
+4. Confirm battery capacity still follows the live gauge and the
+   MT6369 AUX/headset path is unchanged.
+
+Rollback: the currently flashed brightness pair,
+`vendor_boot_b-brightness-avb.img` (`bc6718f2bd63888b05a5da8a658ed748589a0cb7b2eb8bb341243e18640ee0dc`)
+and `vbmeta_b-brightness.img` (`21ea74788eb308452befb9c6ffe82fcec14d3f1ad1e3cd0cf1cdef6690f35f70`).
+
+### Separate follow-ups
+
+- Event-162 trigger-loop race: `wait_no_clear` in the mode-switch
+  packet versus the trigger loop's clear. Latency only; do not change
+  the trigger loop as part of this fix.
+- Missing `gce-event-names` / `cmdq_mbox_create -19`: separate DT
+  cleanup, not required for the timeout fix. Do not mix it into the
+  brightness or CMDQ validation flash.
 
 ---
 
