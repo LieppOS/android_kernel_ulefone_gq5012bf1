@@ -9843,7 +9843,7 @@ void mtk_dsi_send_switch_cmd_nothing(struct mtk_dsi *dsi,
 			if (dfps_cmd->src_fps == 0 ||
 			    drm_mode_vrefresh(old_mode) == dfps_cmd->src_fps)
 				mipi_dsi_dcs_write_gce(dsi, handle,
-					dfps_cmd->para_list, dfps_cmd->cmd_num);
+						       dfps_cmd->para_list, dfps_cmd->cmd_num);
 		}
 		return;
 	}
