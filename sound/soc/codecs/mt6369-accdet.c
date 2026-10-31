@@ -6,6 +6,7 @@
 #include <linux/gpio.h>
 #include <linux/iio/consumer.h>
 #include <linux/input.h>
+#include <linux/kobject.h>
 #include <linux/kthread.h>
 #include <linux/module.h>
 #include <linux/nvmem-consumer.h>
@@ -901,6 +902,79 @@ static void send_key_event(u32 keycode, u32 flag)
 	}
 }
 
+/*
+ * Legacy Android wired-accessory interface.  WiredAccessoryManager falls back
+ * to /sys/class/switch/h2w when config_useDevInputEventForAudioJack is false.
+ * State values follow the framework's BIT_HEADSET/BIT_HEADSET_NO_MIC/
+ * BIT_LINEOUT definitions.
+ */
+static struct class *accdet_switch_class;
+static struct device *accdet_h2w_dev;
+static int accdet_h2w_state;
+
+static ssize_t h2w_state_show(struct device *dev,
+			      struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", accdet_h2w_state);
+}
+static struct device_attribute dev_attr_h2w_state =
+	__ATTR(state, 0444, h2w_state_show, NULL);
+
+static void accdet_h2w_set_state(int state)
+{
+	if (!accdet_h2w_dev || accdet_h2w_state == state)
+		return;
+
+	accdet_h2w_state = state;
+	sysfs_notify(&accdet_h2w_dev->kobj, NULL, "state");
+	kobject_uevent(&accdet_h2w_dev->kobj, KOBJ_CHANGE);
+}
+
+static int accdet_h2w_register(void)
+{
+	int ret;
+
+	accdet_switch_class = class_create(THIS_MODULE, "switch");
+	if (IS_ERR(accdet_switch_class)) {
+		ret = PTR_ERR(accdet_switch_class);
+		accdet_switch_class = NULL;
+		return ret;
+	}
+
+	accdet_h2w_dev = device_create(accdet_switch_class, NULL, MKDEV(0, 0),
+				       NULL, "h2w");
+	if (IS_ERR(accdet_h2w_dev)) {
+		ret = PTR_ERR(accdet_h2w_dev);
+		accdet_h2w_dev = NULL;
+		class_destroy(accdet_switch_class);
+		accdet_switch_class = NULL;
+		return ret;
+	}
+
+	ret = device_create_file(accdet_h2w_dev, &dev_attr_h2w_state);
+	if (ret) {
+		device_destroy(accdet_switch_class, MKDEV(0, 0));
+		accdet_h2w_dev = NULL;
+		class_destroy(accdet_switch_class);
+		accdet_switch_class = NULL;
+		return ret;
+	}
+
+	return 0;
+}
+
+static void accdet_h2w_unregister(void)
+{
+	if (!accdet_h2w_dev)
+		return;
+
+	device_remove_file(accdet_h2w_dev, &dev_attr_h2w_state);
+	device_destroy(accdet_switch_class, MKDEV(0, 0));
+	accdet_h2w_dev = NULL;
+	class_destroy(accdet_switch_class);
+	accdet_switch_class = NULL;
+}
+
 static void send_status_event(u32 cable_type, u32 status)
 {
 	int report = 0;
@@ -925,6 +999,7 @@ static void send_status_event(u32 cable_type, u32 status)
 		}
 		pr_info("accdet HEADPHONE(3-pole) %s\n",
 			status ? "PlugIn" : "PlugOut");
+		accdet_h2w_set_state(status ? 2 : 0);
 		break;
 	case HEADSET_MIC:
 		/* when plug 4-pole out, 3-pole plug out should also be
@@ -944,6 +1019,7 @@ static void send_status_event(u32 cable_type, u32 status)
 				SND_JACK_MICROPHONE);
 		pr_info("accdet MICROPHONE(4-pole) %s\n",
 			status ? "PlugIn" : "PlugOut");
+		accdet_h2w_set_state(status ? 1 : 0);
 		/* when press key for a long time then plug in
 		 * even recoginized as 4-pole
 		 * disable micbias timer still timeout after 6s
@@ -962,6 +1038,7 @@ static void send_status_event(u32 cable_type, u32 status)
 				SND_JACK_LINEOUT);
 		pr_info("accdet LineOut %s\n",
 			status ? "PlugIn" : "PlugOut");
+		accdet_h2w_set_state(status ? 32 : 0);
 		break;
 	default:
 		pr_info("%s Invalid cableType\n", __func__);
@@ -3262,6 +3339,10 @@ static int mt6369_accdet_probe(struct platform_device *pdev)
 	mod_timer(&accdet_init_timer, (jiffies + ACCDET_INIT_WAIT_TIMER));
 	yft_accdet_fm_switch(&pdev->dev);
 
+	ret = accdet_h2w_register();
+	if (ret)
+		dev_warn(&pdev->dev, "Failed to register h2w switch: %d\n", ret);
+
 	return 0;
 
 err_create_attr:
@@ -3285,6 +3366,7 @@ static int mt6369_accdet_remove(struct platform_device *pdev)
 	destroy_workqueue(accdet->dis_micbias_workqueue);
 	destroy_workqueue(accdet->accdet_workqueue);
 	destroy_workqueue(accdet->delay_init_workqueue);
+	accdet_h2w_unregister();
 	class_destroy(accdet->accdet_class);
 	unregister_chrdev_region(accdet->accdet_devno, 1);
 	devm_kfree(&pdev->dev, accdet);
