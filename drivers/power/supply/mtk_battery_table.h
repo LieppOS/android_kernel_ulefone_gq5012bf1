@@ -332,10 +332,13 @@
 
 /* Qmax for battery  */
 /*
- * GQ5012BF1 battery 0: the SH366003 reports FCC 8796 mAh (SoH 94%).
- * Keep the other battery columns at the platform defaults.  The board
- * overlay intentionally does not carry g-q-max because LK authenticates
- * the dtbo with a MediaTek cert1/cert2 chain; see issues.md.
+ * GQ5012BF1 battery 0: fallback q_max only.  mtk_battery.c reports the
+ * SH366003's live learned FCC (register 0x12, exposed by 3rd-gauge as
+ * CHARGE_FULL_DESIGN) as charge_full and uses it for charge_counter.
+ * The values below are used only when 3rd-gauge is unavailable.  The
+ * board overlay intentionally does not carry g-q-max because LK
+ * authenticates the dtbo with a MediaTek cert1/cert2 chain; see
+ * issues.md.
  */
 int g_Q_MAX[MAX_TABLE][TOTAL_BATTERY_NUMBER] = {
 	/*bat1,   bat2,   bat3,    bat4*/

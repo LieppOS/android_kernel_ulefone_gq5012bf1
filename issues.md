@@ -9,7 +9,7 @@ Recorded: 2026-10-31
 
 ---
 
-## 1. Battery capacity is under-reported by the MTK gauge (fixed on `integration/battery-gauge-fix`)
+## 1. Battery capacity follows the MTK gauge fallback instead of the SH366003 FCC (fixed on `integration/battery-gauge-fix`)
 
 ### Symptom
 
@@ -18,7 +18,7 @@ default instead of the real pack capacity:
 
 ```
 battery/charge_full        = 2946000   # 2946 mAh
-battery/charge_full_design = 8807000   # SH366003 design (drifts 8.807-8.815 Ah)
+battery/charge_full_design = 8807000   # SH366003 design (drifts 8.807-8.824 Ah)
 battery/charge_counter     = 1207860   # scaled from the wrong q_max
 battery/capacity           = 42
 battery/voltage_now        = 7693000
@@ -39,13 +39,14 @@ The SH366003 fuel gauge on I2C-9 (`9-0055`) logs the real pack data:
            SoH:94 cycnt:31 Rc:3594 FCC:8796 Vchg:8900 Ichg=13000
 ```
 
-So the real full-charge capacity (FCC) is 8796 mAh, while the MTK gauge
-claims 2946 mAh.
+The learned FCC moved from 8,796 mAh to 8,815, 8,823, then 8,824 mAh
+across reads during this session, while the MTK gauge kept claiming
+2,946 mAh.
 
 ### Root cause
 
 `mt6375-battery.ko` is built from `drivers/power/supply/mtk_battery.c`.
-`battery_psy_get_property()` computes:
+`battery_psy_get_property()` computed:
 
 ```c
 case POWER_SUPPLY_PROP_CHARGE_FULL:
@@ -72,23 +73,65 @@ int g_Q_MAX[MAX_TABLE][TOTAL_BATTERY_NUMBER] = {
 };
 ```
 
-Battery 0 therefore gets 2946 mAh. The 8796 mAh measured by the SH366003
-never reaches the MTK gauge.
+Battery 0 therefore got 2,946 mAh. The FCC measured by the SH366003 never
+reached the MTK gauge.
 
-### Fix
+### First fix (static table, superseded)
 
-Set battery 0 in the compiled `g_Q_MAX` table to **8796 mAh** for all ten
-temperature rows, rebuild `mt6375-battery.ko`, replace the copy in the
-vendor_boot ramdisk (`lib/modules/mt6375-battery.ko`), and re-sign
-`vendor_boot_b` plus `vbmeta_b` with the existing AOSP test key.
+Battery 0 in `g_Q_MAX` was first set to **8,796 mAh** for all ten
+temperature rows. That produced `charge_full=8796000` and
+`charge_counter=3694320` at 42%, and was flashed and validated on Slot B
+(`vendor_boot_b 93f678b5…`, `vbmeta_b 2c5ed2ec…`).
 
-`q_max_h_current` is intentionally left at the platform default. The
-reported `charge_full` and `charge_counter` use `q_max`; the SH366003
-continues to own the UI `capacity`, which was already correct.
+It was superseded because the SH366003 FCC is learned and changes over
+time (8,796 → 8,824 mAh in this session). A static table would silently
+drift away from the gauge, and `charge_counter` would no longer match
+`capacity × FCC`.
+
+### Final fix (live gauge FCC)
+
+`battery_psy_get_property()` now prefers the live SH366003 FCC for both
+properties:
+
+- `POWER_SUPPLY_PROP_CHARGE_FULL`: read
+  `POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN` from `3rd-gauge`, multiply by
+  1,000, and report it.
+- `POWER_SUPPLY_PROP_CHARGE_COUNTER`: use the same live FCC and
+  `ui_soc` (`ui_soc × FCC / 100`).
+
+The stock `3rd-gauge` driver exposes the SH366003 register `0x12`
+(learned FCC) as `CHARGE_FULL_DESIGN`; it is not the marketing nameplate.
+If `3rd-gauge` is unavailable or returns a non-positive value, both
+properties fall back to the compiled `g_Q_MAX` table. Battery 0 remains
+8,796 mAh there as a fallback only. `q_max_h_current` is untouched, and
+the SH366003 continues to own the UI `capacity`.
+
+### 8,824 mAh vs the 10,600 mAh nameplate
+
+The marketing figure is 21,200 mAh at 3.87 V, which is 10,600 mAh at
+7.74 V (2S). That is the nameplate, not necessarily the gauge's design:
+
+- `FCC / SoH = 8,824 / 0.94 ≈ 9,387 mAh`, suggesting a gauge design
+  around 9.4 Ah if SoH is an FCC/design ratio.
+- The AFI data-flash begins with four `4,530 mAh / 4,350 mV` records
+  (`11 b2 10 fe` ×4), consistent with 2S2P 4,530 mAh cells ≈ 9,060 mAh
+  design. The mapping is not yet confirmed.
+- `8,824 / 10,600 = 83.2%`, i.e. 16.8% below the nameplate, not exactly
+  the 20% in `10,600 × 0.8 = 8,480`.
+- `SoH=94`, `cycnt=31`, and `health=Good` argue against a 17% capacity
+  loss, but SoH is not proven to be a pure FCC/design ratio.
+
+The two hypotheses are therefore still open: real degradation, or a
+nameplate higher than the gauge design. The dynamic fix is correct under
+both: it reports what the gauge has actually learned. Forcing 10,600 mAh
+would overstate usable charge by ~20% and break consistency with
+`charge_counter` and `capacity`. A full charge/discharge learning cycle
+can be run later to see whether FCC climbs toward 10,600 or stays near
+8,800.
 
 ### Why not the board DTBO
 
-The obvious fix is to add `&mtk_gauge { g-q-max = <...>; }` to
+The obvious alternative is to add `&mtk_gauge { g-q-max = <...>; }` to
 `gq5012bf1-board.dts`. That is **not** safe on this device. LK
 authenticates the Android dtbo image with a MediaTek cert1/cert2 chain
 before applying overlays. The bootloader log in `expdb` shows:
@@ -106,30 +149,33 @@ dtbo_size=44504
 Editing the overlay would invalidate the MTK signature. `vendor_boot`
 has no such cert1/cert2 blob; it is a normal Android boot image verified
 by AVB, and its hash descriptor is signed by the test key we already
-control. The module-table fix therefore stays inside the AVB trust path.
+control. The module fix therefore stays inside the AVB trust path.
 
-### Validation (Slot B, flashed 2026-10-31)
+### Validation (Slot B, dynamic flash 2026-10-31)
 
-Flashed `vendor_boot_b` (`93f678b5…`) and `vbmeta_b` (`2c5ed2ec…`) in
+Flashed `vendor_boot_b` (`33771522…`) and `vbmeta_b` (`d55c6450…`) in
 bootloader mode; `fastboot getvar unlocked` returned `yes`, Slot `b`.
-Partition readback after boot matches both image hashes exactly.
+Partition readback after boot matches both image hashes exactly. The
+vendor_boot hash descriptor digest changed from `6d5801de…` to
+`3ca2a0a1…`; only that descriptor was patched in `vbmeta_b`, the header
+and root public key are unchanged, and the new signature verifies.
 
-- `battery/charge_full` = `8796000` (was `2946000`) — the new `g_Q_MAX`
-  table is active.
-- `battery/charge_full_design` = `8815000` in this sample. The SH366003
-  design value drifts between 8.807 and 8.815 Ah across reads; the fix
-  does not touch it.
-- `battery/charge_counter` = `3694320`, exactly 42% of `8796000`
-  (was `1237320`, 42% of `2946000`).
+- `battery/charge_full` = `8824000`, exactly
+  `3rd-gauge/charge_full_design (8824) × 1000`. It now follows the gauge.
+- `battery/charge_full_design` = `8824000` for the same reason.
+- `battery/charge_counter` = `3706080`, exactly 42% of `8824000`
+  (was `3694320`, 42% of the old static `8796000`).
 - `battery/capacity` = 42 and `3rd-gauge/capacity` = 42.
 - `mt6375_battery` loaded (`lsmod`), coresize 372736. The module in the
-  flashed ramdisk hashes to `ae8aadbe…`, matching the package. The kernel
-  emits the usual out-of-tree taint when it loads.
+  flashed ramdisk hashes to `6a017942…` (unstripped build
+  `b3786ed1…`). The kernel emits the usual out-of-tree taint when it
+  loads.
 - `ro.boot.verifiedbootstate=green`, `veritymode=enforcing`,
   `flash.locked=1`; no AVB or dm-verity errors in dmesg.
-- `h2w=1` with the headset attached; `mt6369_accdet` still loaded;
-  `vendor_dlkm_b` still hashes to `4a3e89f0…` (AUX fix preserved).
-- `system_server` running (PID 1968); tombstone count unchanged at 64;
+- `h2w=1` with the headset attached; `mt6369_accdet` still loaded; the
+  mounted `/vendor_dlkm/lib/modules/mt6369-accdet.ko` hashes to
+  `f8388511…`, matching the AUX build artifact (AUX fix preserved).
+- `system_server` running (PID 1805); tombstone count unchanged at 64;
   `pstore` empty.
 - CMDQ/display: the fresh post-flash boot shows no `cmdq timeout` lines
   in the current dmesg ring so far. The defect is intermittent and
@@ -139,22 +185,37 @@ Partition readback after boot matches both image hashes exactly.
 
 All hashes are SHA-256 of the full partition image.
 
+Current dynamic images (flashed):
+
+| Image | Path | SHA-256 |
+| --- | --- | --- |
+| `vendor_boot_b` dynamic | `build/battery-gauge/package/images/vendor_boot_b-dynamic.img` | `33771522b731da4cd3afb0c6e30831cedd75bfcaa6657560c4a5b9e11f02eae6` |
+| `vbmeta_b` dynamic | `build/battery-gauge/package/images/vbmeta_b-dynamic.img` | `d55c64509b3f8d1bfb1b7ca9af87d71b286ada9368a8878da70891d3b96a0604` |
+| `mt6375-battery.ko` dynamic | `build/battery-gauge/package/mt6375-battery-dynamic.ko` | `6a017942441ed10ec9e001cd4fe6aef405e64acff221cc30054272e1032631a2` |
+
+Immediate rollback to the previously validated static-FCC pair:
+
+| Image | Path | SHA-256 |
+| --- | --- | --- |
+| `vendor_boot_b` static | `build/battery-gauge/rollback/vendor_boot_b-static.img` | `93f678b56fa5e3884915cac07c83124f028d46b620d02b4806aaf6745450e9b3` |
+| `vbmeta_b` static | `build/battery-gauge/rollback/vbmeta_b-static.img` | `2c5ed2ec3bb146320678a92bdca745277e7314fcbe57bd04b6c12df88f9432fd` |
+| `mt6375-battery.ko` static | `build/battery-gauge/rollback/mt6375-battery-static.ko` | `ae8aadbe6a9a3afceececa81587a70ccc00a4087636a706d422e100721b56d16` |
+
+Deeper rollback to the pre-battery AUX baseline remains available:
+
 | Image | Path | SHA-256 |
 | --- | --- | --- |
 | `vendor_boot_b` baseline | `build/battery-gauge/rollback/vendor_boot_b-baseline.img` | `d251ac5829fdbeef66c36d35ccee083dd2535aed3fa25346aab6dcb7ecfdc3a7` |
-| `vbmeta_b` current (AUX) | `build/battery-gauge/rollback/vbmeta_b-aux.img` | `96e6f498f5908ece9c83d73734883d5132e773f986f278fd725d52491557ada6` |
-| `vendor_dlkm_b` current (AUX) | `build/battery-gauge/rollback/vendor_dlkm_b-aux.img` | `4a3e89f0ba3cd65da61621abb8e144d2457834274971167f4dd3153799bdd195` |
+| `vbmeta_b` AUX | `build/battery-gauge/rollback/vbmeta_b-aux.img` | `96e6f498f5908ece9c83d73734883d5132e773f986f278fd725d52491557ada6` |
+| `vendor_dlkm_b` AUX | `build/battery-gauge/rollback/vendor_dlkm_b-aux.img` | `4a3e89f0ba3cd65da61621abb8e144d2457834274971167f4dd3153799bdd195` |
 | `dtbo_b` (untouched) | `build/battery-gauge/rollback/dtbo_b.img` | `9092967872d1362c45a18d62a83360b742eed58aafa4b0c15043ef159ae042d3` |
 
-The rollback set is mirrored under `build/battery-gauge/rollback/` and
-recorded in `build/battery-gauge/ROLLBACK-COPIES.json`; every hash above
-was re-verified against `BASELINE.json` after the flash.
-
-Fastboot rollback (same Slot B; substitute the device serial):
+Fastboot rollback to the static pair (same Slot B; substitute the
+device serial):
 
 ```sh
-fastboot -s <serial> flash vendor_boot_b build/battery-gauge/rollback/vendor_boot_b-baseline.img
-fastboot -s <serial> flash vbmeta_b build/battery-gauge/rollback/vbmeta_b-aux.img
+fastboot -s <serial> flash vendor_boot_b build/battery-gauge/rollback/vendor_boot_b-static.img
+fastboot -s <serial> flash vbmeta_b build/battery-gauge/rollback/vbmeta_b-static.img
 fastboot -s <serial> reboot
 ```
 

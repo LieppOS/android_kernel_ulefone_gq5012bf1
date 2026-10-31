@@ -682,14 +682,48 @@ static int battery_psy_get_property(struct power_supply *psy,
 		val->intval = pval.intval * 1000;
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_FULL:
+		/*
+		 * The SH366003 is the authoritative pack gauge on GQ5012BF1.
+		 * Its 0x12 register is the learned full-charge capacity (FCC)
+		 * and is exposed by the stock 3rd-gauge driver as
+		 * CHARGE_FULL_DESIGN.  Follow it instead of the static
+		 * g_Q_MAX fallback so charge_full tracks gauge learning.
+		 */
+		if (fg_psy) {
+			ret = power_supply_get_property(fg_psy,
+					POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN,
+					&pval);
+			if (ret == 0 && pval.intval > 0) {
+				val->intval = pval.intval * 1000;
+				ret = 0;
+				break;
+			}
+		}
 		val->intval =
 			gm->fg_table_cust_data.fg_profile[
 				gm->battery_id].q_max * 1000;
+		ret = 0;
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_COUNTER:
+		/*
+		 * Keep charge_counter consistent with charge_full.  Prefer the
+		 * gauge's live FCC; fall back to the static q_max if the gauge
+		 * is not ready.
+		 */
+		if (fg_psy) {
+			ret = power_supply_get_property(fg_psy,
+					POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN,
+					&pval);
+			if (ret == 0 && pval.intval > 0) {
+				val->intval = gm->ui_soc * pval.intval * 1000 / 100;
+				ret = 0;
+				break;
+			}
+		}
 		val->intval = gm->ui_soc *
 			gm->fg_table_cust_data.fg_profile[
 				gm->battery_id].q_max * 1000 / 100;
+		ret = 0;
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
 		/* 1 = META_BOOT, 4 = FACTORY_BOOT 5=ADVMETA_BOOT */
