@@ -1,10 +1,11 @@
-# Experimental DW9781C diagnostic — offline preparation only
+# Experimental DW9781C diagnostic — passive module test verified
 
-**NOT LOADED / NOT HARDWARE VERIFIED.** Building this candidate does not authorize
-copying it to a phone, inserting it, touching I2C, changing power, rebooting or
-flashing. Never unload the existing OIS/camera modules. This helper deliberately
-has no unload callback; if ever authorized and inserted, it stays until a
-separately authorized normal reboot. There is no boot/init integration.
+**PASSIVE MODULE TEST PASSED; OIS HARDWARE UNPROVEN.** The owner authorized one
+disabled-load/status/refusal test after confirming the other agent was paused.
+It passed without I2C or power operations. This does not authorize future loading,
+active sampling, power changes, rebooting or flashing. Never unload the existing
+OIS/camera modules or this helper. It deliberately has no unload callback and
+stays until a separately authorized normal reboot. There is no boot/init integration.
 
 ## What it can and cannot establish
 
@@ -108,12 +109,13 @@ Run protocol tests with the kernel compiler as well. These tests cover exact
 selectors/endianness, opt-in/readiness/capability/acknowledgement/one-shot gates,
 short transfers, NACK/errors, stopping on failure and raw zero/all-ones handling.
 They do **not** emulate the kernel's driver locking, PM races, electrical bus or
-unidentified hardware. No KUnit/hardware/phone test has been performed.
+unidentified hardware. No KUnit or OIS/I2C hardware test has been performed;
+the limited passive phone test is recorded below.
 
 ## Recorded offline result
 
-* **BUILD_VERIFIED / ABI_VERIFIED_OFFLINE; NOT LOADED.** Android clang17
-  r487747c, c29+ vermagic matches the verified camera-module baseline.
+* **BUILD_VERIFIED / ABI_VERIFIED_OFFLINE** before the passive phone test below.
+  Android clang17 r487747c, c29+ vermagic matches the verified camera-module baseline.
 * Final artifact: workspace-relative
   `build/ois-diagnostic/candidate/module/ois_diag.ko` (356448 bytes, unsigned).
   SHA256 `4dde6501bbba6fec22540cc1b92805fb623cdc98e04da263c8719fb402a47b82`.
@@ -132,9 +134,40 @@ unidentified hardware. No KUnit/hardware/phone test has been performed.
 * Review hardened post-load opt-in immutability in code. Init and cached-status
   paths were reviewed for absence of transfers/power actions; the only transfer
   site has fixed messages/registers and lies behind all stated preconditions.
-* Kernel-side PM/locking and electrical behavior remain **untested**. Safe real
+* Client PM/locking and electrical transfer behavior remain **untested**. Safe real
   power/wiring and a trustworthy silicon-ID register are **not established**.
   The last observed suspended state blocks the active path by design.
+
+## Recorded passive phone test (2026-10-31)
+
+**PASSIVE_MODULE_RUNTIME_VERIFIED_ONLY — no OIS identification or bus test.**
+
+* Owner confirmed the other agent was paused and chose the passive-only test.
+  Fresh root/Slot-B preflight confirmed the live config exactly matched the
+  captured compatible baseline and `boot_b` matched its authenticated hash.
+* The phone staging copy matched the final candidate SHA256 above. Normal
+  insertion with immutable `enable_sample=0` returned success, without force
+  flags, signature changes, SELinux relaxation or reboot. The module appeared
+  as live and `[permanent]`; its init log explicitly reported passive operation.
+* Cached status initially reported `ready=1 enabled=0 attempted=0 last_error=0
+  valid_mask=0x0`. A sampling request while disabled was rejected with **EACCES
+  (-13)**. Afterwards `enabled=0 attempted=0 valid_mask=0x0` remained unchanged.
+  This verifies the **disabled opt-in gate**, not the runtime-PM/transfer path.
+* The displayed zero FW words are unfilled cached fields, **not register reads**.
+  No I2C transfer was attempted and neither chip presence nor OIS is established.
+  The real OIS client remained suspended. No power/calibration/servo command,
+  module removal, reboot, slot switch or partition write was performed.
+* Boot identity, `boot_b` hash, SELinux enforcing state and the pre-existing
+  kernel taint value were unchanged at the end of the test.
+* Removed only the staging copy created by this test. The disabled helper
+  remains in RAM until a normal reboot; there is no persistent load integration.
+  Its immutable opt-in cannot be enabled in this loaded instance. A future
+  enabled instance requires a separately approved normal reboot/load sequence,
+  satisfied power/topology prerequisites and explicit active-test approval.
+* Private raw evidence and summary are workspace-relative
+  `build/ois-diagnostic/runtime/{PREFLIGHT.json,COPY.json,LOAD.json,STATUS-BEFORE.txt,
+  GUARD-TEST.json,FINAL-STATE.txt,RUNTIME-RESULT.json}`. Raw device/boot identifiers
+  stay outside Git. This public handoff records only the bounded outcome.
 
 ## Before any future deployment
 
