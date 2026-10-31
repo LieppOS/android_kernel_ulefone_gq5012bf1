@@ -331,18 +331,24 @@
 #define SHOW_AGING_PERIOD 1
 
 /* Qmax for battery  */
+/*
+ * GQ5012BF1 battery 0: the SH366003 reports FCC 8796 mAh (SoH 94%).
+ * Keep the other battery columns at the platform defaults.  The board
+ * overlay intentionally does not carry g-q-max because LK authenticates
+ * the dtbo with a MediaTek cert1/cert2 chain; see issues.md.
+ */
 int g_Q_MAX[MAX_TABLE][TOTAL_BATTERY_NUMBER] = {
 	/*bat1,   bat2,   bat3,    bat4*/
-	{ 2946, 2712, 2490, 1965},/*T0*/
-	{ 2796, 2851, 2468, 1984},/*T1*/
-	{ 2718, 2432, 2310, 1946},/*T2*/
-	{ 2535, 1991, 1858, 1873},/*T3*/
-	{ 2523, 1960, 1843, 1851},/*T4*/
-	{ 2211, 1652, 1533, 1541},/*T5*/
-	{ 2201, 1642, 1523, 1531},/*T6*/
-	{ 2191, 1632, 1513, 1521},/*T7*/
-	{ 2181, 1622, 1503, 1511},/*T8*/
-	{ 2171, 1612, 1493, 1501} /*T9*/
+	{ 8796, 2712, 2490, 1965},/*T0*/
+	{ 8796, 2851, 2468, 1984},/*T1*/
+	{ 8796, 2432, 2310, 1946},/*T2*/
+	{ 8796, 1991, 1858, 1873},/*T3*/
+	{ 8796, 1960, 1843, 1851},/*T4*/
+	{ 8796, 1652, 1533, 1541},/*T5*/
+	{ 8796, 1642, 1523, 1531},/*T6*/
+	{ 8796, 1632, 1513, 1521},/*T7*/
+	{ 8796, 1622, 1503, 1511},/*T8*/
+	{ 8796, 1612, 1493, 1501} /*T9*/
 };
 
 int g_Q_MAX_H_CURRENT[MAX_TABLE][TOTAL_BATTERY_NUMBER] = {
