@@ -922,12 +922,24 @@ static struct device_attribute dev_attr_h2w_state =
 
 static void accdet_h2w_set_state(int state)
 {
+	char switch_state[32];
+	char *envp[3];
+
 	if (!accdet_h2w_dev || accdet_h2w_state == state)
 		return;
 
 	accdet_h2w_state = state;
+	snprintf(switch_state, sizeof(switch_state), "SWITCH_STATE=%d", state);
+	envp[0] = "SWITCH_NAME=h2w";
+	envp[1] = switch_state;
+	envp[2] = NULL;
 	sysfs_notify(&accdet_h2w_dev->kobj, NULL, "state");
-	kobject_uevent(&accdet_h2w_dev->kobj, KOBJ_CHANGE);
+	/*
+	 * WiredAccessoryManager's UEventObserver requires SWITCH_NAME and
+	 * SWITCH_STATE; a bare KOBJ_CHANGE uevent makes it dereference a null
+	 * name and crash system_server.
+	 */
+	kobject_uevent_env(&accdet_h2w_dev->kobj, KOBJ_CHANGE, envp);
 }
 
 static int accdet_h2w_register(void)
