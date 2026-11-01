@@ -1722,6 +1722,18 @@ static int dump_last_thread(void *arg)
 	return 0;
 }
 
+/*
+ * msleep() equivalent in TASK_IDLE: the long periodic waits of these monitor
+ * threads stay uninterruptible but are not counted in the load average.
+ */
+static void hd_msleep_idle(unsigned int msecs)
+{
+	unsigned long timeout = msecs_to_jiffies(msecs) + 1;
+
+	while (timeout)
+		timeout = schedule_timeout_idle(timeout);
+}
+
 static int hang_detect_dump_thread(void *arg)
 {
 	/* unsigned long flags; */
@@ -1730,7 +1742,7 @@ static int hang_detect_dump_thread(void *arg)
 	};
 
 	sched_setscheduler(current, SCHED_FIFO, &param);
-	msleep(120 * 1000);
+	hd_msleep_idle(120 * 1000);
 	dump_bt_done = 1;
 	while (1) {
 		wait_event_interruptible(dump_bt_start_wait, dump_bt_done == 0);
@@ -1782,7 +1794,7 @@ static int hang_detect_thread(void *arg)
 
 	sched_setscheduler(current, SCHED_FIFO, &param);
 	reset_hang_info();
-	msleep(120 * 1000);
+	hd_msleep_idle(120 * 1000);
 	pr_debug("[Hang_Detect] hang_detect thread starts.\n");
 
 	if (monitor_hang_boot_up_enable) {
@@ -1841,7 +1853,7 @@ static int hang_detect_thread(void *arg)
 			hang_detect_counter--;
 		}
 
-		msleep((HD_INTER) * 1000);
+		hd_msleep_idle((HD_INTER) * 1000);
 	}
 	return 0;
 }

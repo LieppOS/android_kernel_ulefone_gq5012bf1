@@ -694,7 +694,11 @@ static int mtk_drm_esd_check_worker_kthread(void *data)
 		index = drm_crtc_index(esd_ctx->crtc);
 
 	while (1) {
-		msleep(ESD_CHECK_PERIOD);
+		unsigned long timeout = msecs_to_jiffies(ESD_CHECK_PERIOD) + 1;
+
+		/* msleep() in TASK_IDLE: not counted in the load average. */
+		while (timeout)
+			timeout = schedule_timeout_idle(timeout);
 		if (esd_ctx->chk_en == 0)
 			continue;
 

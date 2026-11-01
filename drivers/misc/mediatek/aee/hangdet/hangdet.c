@@ -961,7 +961,11 @@ static int kwdt_thread(void *arg)
 			spin_unlock_bh(&lock);
 		}
 
-		usleep_range(curInterval, curInterval + SOFT_KICK_RANGE);
+		/*
+		 * Same uninterruptible wait, but TASK_IDLE: one sleeping kicker
+		 * per CPU must not inflate the load average.
+		 */
+		usleep_idle_range(curInterval, curInterval + SOFT_KICK_RANGE);
 	}
 	pr_debug("[wdk] wdk thread stop, cpu:%d, pid:%d\n", cpu, current->pid);
 	return 0;

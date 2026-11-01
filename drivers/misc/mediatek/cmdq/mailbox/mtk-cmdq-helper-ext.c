@@ -4107,8 +4107,12 @@ EXPORT_SYMBOL(cmdq_sec_helper_set_fp);
 static int cmdq_record_buffer_usage(void *data)
 {
 	while (!kthread_should_stop()) {
+		unsigned long timeout = msecs_to_jiffies(1000 * 60) + 1;
+
 		cmdq_util_buff_track(&BUF_SIZE_THRD_MAX[0][0], CMDQ_HW_MAX, CMDQ_THR_MAX_COUNT);
-		msleep(1000 * 60);
+		/* msleep() in TASK_IDLE: not counted in the load average. */
+		while (timeout)
+			timeout = schedule_timeout_idle(timeout);
 	}
 	return 0;
 }
