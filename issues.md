@@ -494,4 +494,22 @@ test location). "Show numbers of the SIM cards" is still open.
   enforcing, no IMS crashes. Rollback = minimal-media system_ext/vbmeta_system +
   HDR product/vbmeta (`build/ims/flash_b.py rollback-*`).
 - Not enabled: Wi-Fi calling (no wfca/ePDG in vendor) and ViLTE.
+- VoNR shown directly below VoLTE (Settings rebuilt from source; only
+  `res/xml/mobile_network_settings.xml` differs, dex identical). Process error:
+  the first Settings package was built on the pre-IMS `system_ext` (a script
+  substitution failed silently) and briefly removed IMS. The corrected package
+  (`system_ext_b d6d36bfc`, `vbmeta_system_b 22461e80`) asserts that the IMS files
+  are present; IMS is registered again on both SIMs.
+
+## 5a. Battery saver capped the refresh rate at 60 Hz (fixed 2026-11-01)
+
+AOSP `DisplayModeDirector.updateLowPowerModeSettingLocked` always votes a
+0-60 Hz render range when `low_power=1`; this panel has no
+`lowPowerSupportedModes`, and Settings does not grey anything out. The vote is
+now gated on `ro.lieppos.low_power_limits_refresh_rate` (default true; this
+device sets false). Smali diff vs the shipped services.jar: only
+`SettingsObserver.updateLowPowerModeSettingLocked`; the boot image is unchanged.
+RAM-only bind-mount test, then flashed B-only `system_b 90623920`,
+`vbmeta_system_b a1b17b8e`. With battery saver on, the display stays at 120/120.
+Owner confirmed.
 ## 8.
