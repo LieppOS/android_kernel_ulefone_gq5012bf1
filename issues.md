@@ -460,4 +460,38 @@ items (section 2).
 
 ## 6. Fm Radio
 ## 7. 5G, NoVR option. Make show numbers of the SIM cards.
+
+### VoLTE / VoNR (enabled 2026-11-01, slot B; device tree `ims/`)
+
+Status: VoLTE works on both SIMs (Bite LT 246-02, Telia LT 246-01); calls
+go over IMS. The VoNR switch is shown and works in both directions; an actual
+VoNR call needs 5G SA coverage and has not been observed yet (LTE only at the
+test location). "Show numbers of the SIM cards" is still open.
+
+- Nothing bound IMS before: no `config_ims_mmtel_package`, and the vendor-tree
+  stock `com.mediatek.ims` (v35) cannot run here: it needs 24 classes from the
+  `mediatek-*` framework jars, which are not on the AOSP boot classpath.
+- Used the community unified MediaTek ImsService (v33). Against the phone's
+  boot classpath the only missing class was
+  `com.android.internal.telephony.metrics.TelephonyMetrics` (removed in Android 17),
+  so a `classes2.dex` with a no-op stub was added. The APK is platform-signed
+  (shared uid phone).
+- It then died in `WfoService.makeWfoService`: SELinux denied `add` for `mwis`
+  (labelled `default_android_service`). Added the stock `system_ext` labels
+  `imsa mtkIms GbaService mwis wfo` -> `radio_service`.
+- Android disabled every MMTEL capability: `config_device_volte_available` and
+  `carrier_volte_available_bool` default to false and no AOSP carrier file
+  exists for these carriers. Fixed with framework/phone/CarrierConfig overlays
+  (`vendor.xml`; the mcc/mnc filters did not match, carrier-id 892/893 do).
+- VoNR: the RIL accepted `ENABLE_VONR` but `IS_VONR_ENABLED` stayed false.
+  In `libmtk-ril.so`, `triggerImsCfgCommand` recomputes the
+  `persist.vendor.mtk.vonr.enable` bitmask. With
+  `persist.vendor.mtk_dynamic_ims_switch=1` it takes the value from a per-carrier
+  capability table filled only by the stock MediaTek IMS framework, so VoNR could
+  be switched off but never on. Set the switch to 0 (product prop).
+- Flashed B-only: system_ext_b `cce94d77`, product_b `d9182734`,
+  vbmeta_system_b `2481b7bd`, vbmeta_b `a3efd3dc`. Slot A unchanged; boots green,
+  enforcing, no IMS crashes. Rollback = minimal-media system_ext/vbmeta_system +
+  HDR product/vbmeta (`build/ims/flash_b.py rollback-*`).
+- Not enabled: Wi-Fi calling (no wfca/ePDG in vendor) and ViLTE.
 ## 8.
