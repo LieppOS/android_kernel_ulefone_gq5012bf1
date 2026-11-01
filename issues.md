@@ -223,7 +223,15 @@ The dtbo partition is not touched by this fix.
 
 ---
 
-## 2. CMDQ / display timeouts on refresh-rate switches (previous candidate FAILED; VM correction offline-built)
+## 2. CMDQ / display timeouts on refresh-rate switches (VM sender deployed; line artifacts fixed by `f0efdb86e`)
+
+**Status 2026-11-01:** `187f8de4c` (VM sender) was deployed (vm-dfps, then the
+TASK_IDLE vendor_boot) and removed the timeouts, but each 60/90/120 switch still
+showed a one-frame band of brighter/dimmer lines. `f0efdb86e` follows the stock
+provider for `change_fps_by_vfp_send_cmd` panels: stop video at frame end, write
+VFP, send `6c` with the normal engine, restart video. Flashed to Slot B
+(`vendor_boot_b` `7106da37…`); owner-verified lines gone, 64 switches without
+CMDQ timeouts. The text below is the historical record.
 
 **Not hardware-fixed.** The `b62bc26e8` pre-poll-only candidate was tested with
 owner authorization on 2026-10-31, failed, and was rolled back. The revised
@@ -379,6 +387,11 @@ unaffected by this branch:
 Commits: `e9eadab7e`, `02d1effb7`, `b91b87ad2`, `b21bde9d9`.
 
 ## 5. USER. DISPLAY HDR, Display Brightness does nothing AND refresh rate in settings
+
+**Status 2026-11-01:** brightness fixed (below); refresh selectors and Smooth
+Display shipped as a product RRO; HDR brightness enabled via the 12-bit HBM
+range (device `3042a26`: DTB backlight max 4095 + product display config).
+Owner-verified: HDR video boosts to DBV 4094 (~926 nits), SDR stays 513 nits.
 
 ### Brightness root cause (2026-10-31)
 
