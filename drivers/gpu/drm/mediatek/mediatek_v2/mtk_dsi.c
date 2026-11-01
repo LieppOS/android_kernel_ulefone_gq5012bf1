@@ -9875,6 +9875,34 @@ void mtk_dsi_send_switch_cmd_nothing(struct mtk_dsi *dsi,
 	if (dfps_cmd->src_fps == 0 || drm_mode_vrefresh(old_mode) == dfps_cmd->src_fps)
 		mtk_dsi_cmdq_pack_gce(dsi, handle, &send_cmd_to_ddic);
 }
+/*
+ * First-enable fallback shared with the HFP branch: the stopped-video VFP
+ * path below needs a valid lane rate before it restarts video mode.
+ */
+static void mtk_dsi_vdo_dfps_ensure_rate(struct mtk_dsi *dsi)
+{
+	if (dsi->data_rate)
+		return;
+
+	dsi->data_rate = mtk_dsi_default_rate(dsi);
+	mtk_mipi_tx_pll_rate_set_adpt(dsi->phy, dsi->data_rate);
+	if (dsi->ext->params->data_rate_khz)
+		mtk_mipi_tx_pll_rate_khz_set_adpt(dsi->phy,
+			dsi->ext->params->data_rate_khz);
+	if (dsi->slave_dsi) {
+		dsi->slave_dsi->data_rate = dsi->data_rate;
+		mtk_mipi_tx_pll_rate_set_adpt(dsi->slave_dsi->phy, dsi->data_rate);
+		if (dsi->ext->params->data_rate_khz)
+			mtk_mipi_tx_pll_rate_khz_set_adpt(dsi->slave_dsi->phy,
+				dsi->ext->params->data_rate_khz);
+	}
+	if (dsi->data_rate) {
+		mtk_dsi_phy_timconfig(dsi, NULL);
+		if (dsi->slave_dsi)
+			mtk_dsi_phy_timconfig(dsi->slave_dsi, NULL);
+	}
+}
+
 static void mtk_dsi_vdo_timing_change(struct mtk_dsi *dsi,
 	struct mtk_drm_crtc *mtk_crtc, struct drm_crtc_state *old_state)
 {
@@ -10017,7 +10045,19 @@ static void mtk_dsi_vdo_timing_change(struct mtk_dsi *dsi,
 		mtk_disp_mutex_trigger(comp->mtk_crtc->mutex[0], handle);
 		mtk_dsi_trigger(comp, handle);
 	} else if (fps_chg_index & MODE_DSI_VFP) {
-		DDPINFO("%s, change VFP\n", __func__);
+		/*
+		 * Panels with change_fps_by_vfp_send_cmd need their DFPS command
+		 * and the new VFP to take effect on the same frame. As in the
+		 * stock GQ5012BF1 provider, stop video mode at frame end, program
+		 * VFP, send the table with the normal command engine, then
+		 * restart video mode. Sending the command into a running stream
+		 * leaves the panel on the old/new mode for a mismatched frame.
+		 */
+		bool stop_vdo_for_cmd = dsi->ext && dsi->ext->params &&
+			dsi->ext->params->change_fps_by_vfp_send_cmd;
+
+		DDPINFO("%s, change VFP%s\n", __func__,
+			stop_vdo_for_cmd ? " (stopped video)" : "");
 		cmdq_pkt_wait_no_clear(handle,
 			mtk_crtc->gce_obj.event[EVENT_CMD_EOF]);
 		comp = mtk_ddp_comp_request_output(mtk_crtc);
@@ -10026,6 +10066,13 @@ static void mtk_dsi_vdo_timing_change(struct mtk_dsi *dsi,
 			DDPPR_ERR("ddp comp is NULL\n");
 			kfree(cb_data);
 			return;
+		}
+
+		if (stop_vdo_for_cmd) {
+			cmdq_pkt_wfe(handle,
+				     mtk_crtc->gce_obj.event[EVENT_CMD_EOF]);
+			mtk_dsi_stop_vdo_mode(dsi, handle);
+			mtk_dsi_vdo_dfps_ensure_rate(dsi);
 		}
 
 		if (dsi->mipi_hopping_sta && dsi->ext) {
@@ -10038,8 +10085,9 @@ static void mtk_dsi_vdo_timing_change(struct mtk_dsi *dsi,
 		if (dsi->slave_dsi)
 			dsi->slave_dsi->vm.vfront_porch = vfp;
 
-		mtk_dsi_send_switch_cmd_nothing(dsi, handle, mtk_crtc, src_mode,
-					drm_mode_vrefresh(&adjusted_mode));
+		if (!stop_vdo_for_cmd)
+			mtk_dsi_send_switch_cmd_nothing(dsi, handle, mtk_crtc,
+				src_mode, drm_mode_vrefresh(&adjusted_mode));
 		/* Msync 2.0 ToDo: can we change vm.vfront_porch according msync?
 		 * mmdvfs,dramdvfs according to vm.vfront_porch?
 		 */
@@ -10070,6 +10118,17 @@ static void mtk_dsi_vdo_timing_change(struct mtk_dsi *dsi,
 		if (dsi->slave_dsi)
 			mtk_dsi_porch_setting(&dsi->slave_dsi->ddp_comp,
 						handle, DSI_VFP, vfp);
+
+		if (stop_vdo_for_cmd) {
+			mtk_dsi_send_switch_cmd(dsi, handle, mtk_crtc, src_mode,
+					drm_mode_vrefresh(&adjusted_mode));
+			mtk_dsi_start_vdo_mode(comp, handle);
+			/* avoid config continuing after video is retriggered */
+			cmdq_pkt_clear_event(handle,
+				     mtk_crtc->gce_obj.event[EVENT_CMD_EOF]);
+			mtk_disp_mutex_trigger(comp->mtk_crtc->mutex[0], handle);
+			mtk_dsi_trigger(comp, handle);
+		}
 	}
 
 	if (mtk_crtc->qos_ctx)
