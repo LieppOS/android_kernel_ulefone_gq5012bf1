@@ -9,6 +9,7 @@
 #include <linux/of.h>
 #include <linux/of_gpio.h>
 #include <linux/pinctrl/consumer.h>
+#include <linux/pinctrl/machine.h>
 #include <linux/platform_device.h>
 #include <linux/pm_wakeup.h>
 #include <linux/slab.h>
@@ -75,6 +76,148 @@ static void set_leds(int red, int blue)
 	raw_gpio_set(ln2403_chip_data->leds_power_gpio, !!(red | blue));
 	raw_gpio_set(ln2403_chip_data->leds_red_gpio, red);
 	raw_gpio_set(ln2403_chip_data->leds_blue_gpio, blue);
+}
+
+/*
+ * LieppOS: red/blue dimming.  The red and blue LED lines are SoC GPIO20 and
+ * GPIO21, whose pin function 1 is PWM_1 / PWM_2 (both unused on this board:
+ * IR uses PWM_0, the camping light PWM_3).  A level of 1..254 muxes the pin to
+ * PWM; 0 and 255 keep the stock GPIO path.  The mux states are registered at
+ * runtime on two helper devices, so the stock device tree is not changed.
+ */
+#define RB_PWM_RED 1
+#define RB_PWM_BLUE 2
+/*
+ * PWM_1/PWM_2 count the 32 kHz block clock here (the per-channel 26 MHz select
+ * is shared with the flashlight/IR block clock, so it is left alone):
+ * 32768 / 1 / 40 = ~820 Hz, no visible flicker, 40 duty steps.
+ */
+#define RB_PWM_WIDTH 40
+#define RB_PWM_CLK_DIV1 0
+#define RB_PINCTRL_DEV "10005000.pinctrl"
+
+struct rb_chan {
+	const char *name;	/* helper device name, also the map dev_name */
+	const char *group;	/* pinctrl group (pin) name */
+	int pwm_no;
+	int level;		/* 0..255 */
+	bool pwm_on;
+	struct platform_device *pdev;
+	struct pinctrl *pctl;
+	struct pinctrl_state *st_gpio, *st_pwm;
+	struct pinctrl_map map[2];
+};
+
+static struct rb_chan rb_red = { "ln2403-red", "GPIO20", RB_PWM_RED };
+static struct rb_chan rb_blue = { "ln2403-blue", "GPIO21", RB_PWM_BLUE };
+static bool rb_ready;
+
+static int rb_chan_init(struct rb_chan *c)
+{
+	int ret;
+
+	c->map[0] = (struct pinctrl_map)PIN_MAP_MUX_GROUP(c->name, "gpio",
+		RB_PINCTRL_DEV, c->group, "func0");
+	c->map[1] = (struct pinctrl_map)PIN_MAP_MUX_GROUP(c->name, "pwm",
+		RB_PINCTRL_DEV, c->group, "func1");
+	ret = pinctrl_register_mappings(c->map, ARRAY_SIZE(c->map));
+	if (ret)
+		return ret;
+	c->pdev = platform_device_register_simple(c->name, -1, NULL, 0);
+	if (IS_ERR(c->pdev)) {
+		ret = PTR_ERR(c->pdev);
+		goto err_map;
+	}
+	c->pctl = pinctrl_get(&c->pdev->dev);
+	if (IS_ERR(c->pctl)) {
+		ret = PTR_ERR(c->pctl);
+		goto err_dev;
+	}
+	c->st_gpio = pinctrl_lookup_state(c->pctl, "gpio");
+	c->st_pwm = pinctrl_lookup_state(c->pctl, "pwm");
+	if (IS_ERR(c->st_gpio) || IS_ERR(c->st_pwm)) {
+		ret = -ENODEV;
+		goto err_pctl;
+	}
+	return 0;
+err_pctl:
+	pinctrl_put(c->pctl);
+err_dev:
+	platform_device_unregister(c->pdev);
+err_map:
+	pinctrl_unregister_mappings(c->map);
+	c->pdev = NULL;
+	return ret;
+}
+
+static void rb_chan_exit(struct rb_chan *c)
+{
+	if (!c->pdev)
+		return;
+	pinctrl_put(c->pctl);
+	platform_device_unregister(c->pdev);
+	pinctrl_unregister_mappings(c->map);
+	c->pdev = NULL;
+}
+
+/* Back to the stock GPIO function (PWM stopped). */
+static void rb_pwm_stop(struct rb_chan *c)
+{
+	if (!c->pwm_on)
+		return;
+	pinctrl_select_state(c->pctl, c->st_gpio);
+	mt_pwm_disable(c->pwm_no, 0);
+	c->pwm_on = false;
+}
+
+static void rb_pwm_start(struct rb_chan *c, int level)
+{
+	struct pwm_spec_config conf = { 0 };
+
+	conf.pwm_no = c->pwm_no;
+	conf.mode = 0;			/* PWM_MODE_OLD */
+	conf.clk_src = 0;		/* PWM_CLK_OLD_MODE_BLOCK (26 MHz) */
+	conf.clk_div = RB_PWM_CLK_DIV1;
+	conf.PWM_MODE_OLD_REGS.DATA_WIDTH = RB_PWM_WIDTH;
+	conf.PWM_MODE_OLD_REGS.THRESH = max(1, level * RB_PWM_WIDTH / 255);
+	pwm_set_spec_config(&conf);
+	if (!c->pwm_on)
+		pinctrl_select_state(c->pctl, c->st_pwm);
+	c->pwm_on = true;
+}
+
+/* Stock modes 0..6 drive the lines as plain GPIOs: release any PWM first. */
+static void rb_reset_levels(void)
+{
+	if (!rb_ready)
+		return;
+	rb_pwm_stop(&rb_red);
+	rb_pwm_stop(&rb_blue);
+	rb_red.level = 0;
+	rb_blue.level = 0;
+}
+
+static void rb_apply(struct rb_chan *c, int gpio, int level)
+{
+	struct ln2403_data *d = ln2403_chip_data;
+	bool any;
+
+	c->level = level;
+	if (level > 0 && level < 255 && rb_ready) {
+		raw_gpio_set(d->leds_power_gpio, 1);
+		rb_pwm_start(c, level);
+	} else {
+		if (rb_ready)
+			rb_pwm_stop(c);
+		raw_gpio_set(gpio, level ? 1 : 0);
+	}
+	any = rb_red.level || rb_blue.level;
+	raw_gpio_set(d->leds_power_gpio, any);
+	d->leds_mode = (rb_red.level ? LEDS_RED_ON : 0) | (rb_blue.level ? LEDS_BLUE_ON : 0);
+	if (any && !d->redblue_ws->active)
+		__pm_stay_awake(d->redblue_ws);
+	else if (!any && d->redblue_ws->active)
+		__pm_relax(d->redblue_ws);
 }
 
 static enum hrtimer_restart redblue_led_timer_func(struct hrtimer *timer)
@@ -310,10 +453,37 @@ static ssize_t leds_ctl_store(struct device *dev,
 {
 	struct ln2403_data *d = ln2403_chip_data;
 	int mode = 0;
+	int level;
+
+	/* LieppOS: "red <0-255>" / "blue <0-255>" set one colour independently. */
+	if (sscanf(buf, "red %d", &level) == 1 || sscanf(buf, "blue %d", &level) == 1) {
+		bool red = buf[0] == 'r';
+
+		level = clamp(level, 0, 255);
+		mutex_lock(&d->lock);
+		if (d->leds_mode >= LEDS_RED_FLASH) {	/* leave a stock flash pattern */
+			hrtimer_cancel(&d->redblue_timer);
+			set_leds(0, 0);
+			d->leds_mode = LEDS_ALL_OFF;
+		}
+		if (!rb_red.level && !rb_blue.level) {	/* adopt stock steady state */
+			rb_red.level = (d->leds_mode & LEDS_RED_ON) ? 255 : 0;
+			rb_blue.level = (d->leds_mode & LEDS_BLUE_ON) ? 255 : 0;
+		}
+		if (red)
+			rb_apply(&rb_red, d->leds_red_gpio, level);
+		else
+			rb_apply(&rb_blue, d->leds_blue_gpio, level);
+		mutex_unlock(&d->lock);
+		return count;
+	}
 
 	if (sscanf(buf, "%d", &mode) != 1)
 		return count;
 	pr_info("[%s]camplight. mode=%d\n", __func__, mode);
+	mutex_lock(&d->lock);
+	rb_reset_levels();
+	mutex_unlock(&d->lock);
 	hrtimer_cancel(&d->redblue_timer);
 	d->leds_flash_state = 0;
 	d->leds_mode = mode;
@@ -481,6 +651,13 @@ static int camplight_probe(struct platform_device *pdev)
 		pinctrl_select_state(ln2403_pinctrl, ln2403_pwmoff_low);
 	d->camplight_mode = CAMP_OFF;
 	d->ln2403_ws = wakeup_source_register(NULL, "ln2403_wake_lock");
+	if (!rb_chan_init(&rb_red)) {
+		if (!rb_chan_init(&rb_blue))
+			rb_ready = true;
+		else
+			rb_chan_exit(&rb_red);
+	}
+	pr_info("ln2403: red/blue dimming %s\n", rb_ready ? "available" : "unavailable");
 	pr_info("ln2403_probe end\n");
 	return 0;
 }
@@ -488,6 +665,12 @@ static int camplight_probe(struct platform_device *pdev)
 static int camplight_remove(struct platform_device *pdev)
 {
 	pr_info("%s %d.\n", __func__, __LINE__);
+	if (rb_ready) {
+		rb_reset_levels();
+		rb_chan_exit(&rb_blue);
+		rb_chan_exit(&rb_red);
+		rb_ready = false;
+	}
 	return 0;
 }
 
