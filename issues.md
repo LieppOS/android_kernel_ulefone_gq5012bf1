@@ -512,4 +512,17 @@ device sets false). Smali diff vs the shipped services.jar: only
 RAM-only bind-mount test, then flashed B-only `system_b 90623920`,
 `vbmeta_system_b a1b17b8e`. With battery saver on, the display stays at 120/120.
 Owner confirmed.
-## 8.
+## 8. Thermocamera + LED's. IR led.
+
+LEDs done (flashed, B only). Quick Settings tiles: Super flashlight
+(off/lowest/max), Red light and Blue light (off/low/max). Red/blue are dimmed by
+hardware PWM 1/2 on GPIO 20/21 (old mode, 32 kHz block clock, width 40 = ~820
+Hz; the first try at 26 MHz assumptions ran at ~4 Hz and visibly blinked).
+Tile lag came from the app freezer and was fixed by making the tiles app
+persistent. Flashed `vendor_dlkm_b a6853c88`, `vbmeta_b f72c545d`,
+`system_ext_b f35cc3d9`, `vbmeta_system_b b5884873`.
+Note: rebuilt EROFS images keep fixed file mtimes, so PackageManager reused a
+stale parse of the changed apk until `/data/system/package_cache` was cleared.
+Thermocamera and IR LED: open.
+## 9. Android Auto, MicroG.
+
