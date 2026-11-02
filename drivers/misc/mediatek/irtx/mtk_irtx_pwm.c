@@ -8,6 +8,7 @@
 #include <linux/dma-mapping.h>
 #include <linux/module.h>
 #include <linux/of.h>
+#include <linux/overflow.h>
 #include <linux/platform_device.h>
 #include <linux/regulator/consumer.h>
 #include <media/rc-core.h>
@@ -17,22 +18,25 @@
 
 #define DRIVER_NAME	"mtk-pwm-ir-tx"
 #define DEVICE_NAME	"MTK PWM IR Transmitter"
-#define IRTX_PWM_CLOCK (26000000)
-//#define IRTX_DEBUG
+#define IRTX_PWM_CLOCK		26000000U
+#define IRTX_DEFAULT_CARRIER	38000U
+/* Preserve the OEM waveform: one high bit followed by two low bits. */
+#define IRTX_CYCLE		3U
+#define IRTX_MAX_WORDS		U16_MAX
+#define IRTX_MAX_DURATION	IR_MAX_DURATION
+#define IRTX_MAX_COUNT		1024U
 
 struct mtk_pwm_ir {
 	struct regulator *regulator;
 	unsigned int pwm_ch;
 	unsigned int pwm_data_invert;
 	unsigned int carrier;
-	unsigned int duty_cycle;
-	unsigned int cycle;
+	bool carrier_valid;
+	bool duty_valid;
 	struct platform_device *pdev;
 };
 
-static unsigned int dma_mask_bit;
-
-static struct pwm_spec_config irtx_pwm_config = {
+static const struct pwm_spec_config irtx_pwm_config = {
 	.pwm_no = 0,
 	.mode = PWM_MODE_MEMORY,
 	.clk_div = CLK_DIV1,
@@ -41,160 +45,129 @@ static struct pwm_spec_config irtx_pwm_config = {
 	.PWM_MODE_MEMORY_REGS.IDLE_VALUE = IDLE_FALSE,
 	.PWM_MODE_MEMORY_REGS.GUARD_VALUE = GUARD_FALSE,
 	.PWM_MODE_MEMORY_REGS.STOP_BITPOS_VALUE = 31,
-	/* 1 microseconds, assume clock source is 26M */
-	.PWM_MODE_MEMORY_REGS.HDURATION = 229,
-	.PWM_MODE_MEMORY_REGS.LDURATION = 229,
 	.PWM_MODE_MEMORY_REGS.GDURATION = 0,
 	.PWM_MODE_MEMORY_REGS.WAVE_NUM = 1,
 };
+
+/* HDURATION/LDURATION contain ticks minus one in 16-bit registers. */
+static int mtk_pwm_ir_period(u32 carrier, u32 *ticks)
+{
+	if (carrier < DIV_ROUND_UP(IRTX_PWM_CLOCK, IRTX_CYCLE * (U16_MAX + 1U)) ||
+	    carrier > IRTX_PWM_CLOCK / IRTX_CYCLE)
+		return -EINVAL;
+
+	*ticks = DIV_ROUND_CLOSEST_ULL(IRTX_PWM_CLOCK, (u64)carrier * IRTX_CYCLE);
+	if (!*ticks || *ticks > U16_MAX + 1U)
+		return -EINVAL;
+
+	return 0;
+}
+
+static u32 mtk_pwm_ir_bits(u32 duration, u32 carrier)
+{
+	return DIV_ROUND_CLOSEST_ULL((u64)duration * carrier,
+				     USEC_PER_SEC) * IRTX_CYCLE;
+}
 
 static int mtk_pwm_ir_tx(struct rc_dev *rcdev, unsigned int *txbuf,
 			 unsigned int count)
 {
 	struct mtk_pwm_ir *pwm_ir = rcdev->priv;
-	dma_addr_t wave_phy = 0;
-	unsigned int *wave_vir;
-	int ret, i, h_l_period;
-	int buf_size = 0;
-	int total_time = 0;
-	int len = 0;
-	int cur_bit = 0;
-	int regulator_enabled = 0;
-#ifdef IRTX_DEBUG
-	static char logbuf[4096];
-	int cur_idx = 0;
-	char *dbglog = logbuf;
-#endif
+	struct pwm_spec_config config = irtx_pwm_config;
+	struct device *dev = &pwm_ir->pdev->dev;
+	unsigned int original_count = count;
+	u32 bits = 0, duration = 0, ticks, words, pos = 0;
+	u32 i, j, total_time;
+	u64 wait_us;
+	u32 *wave_vir;
+	dma_addr_t wave_phy;
+	size_t buf_size;
+	int ret, err;
 
-	pr_info("%s() irtx len=0x%x, pwm=%d\n", __func__,
-		(unsigned int)count, (unsigned int)pwm_ir->pwm_ch);
+	/* rc-core serializes writes and both setters with rcdev->lock. */
+	if (!pwm_ir->carrier_valid || !pwm_ir->duty_valid)
+		return -EINVAL;
+	ret = mtk_pwm_ir_period(pwm_ir->carrier, &ticks);
+	if (ret)
+		return ret;
+	if (!count || count > IRTX_MAX_COUNT || !(count & 1))
+		return -EINVAL;
 
-	/* lirc txbuf is odd, consumerir will append a "1" at last
-	 * if original pattern_len is even.
+	/* Validate even the HAL padding before removing it. */
+	for (i = 0; i < count; i++) {
+		if (!txbuf[i] || txbuf[i] > IRTX_MAX_DURATION - duration)
+			return -EINVAL;
+		duration += txbuf[i];
+	}
+	/*
+	 * The stock HAL appends 1 us to even-length Android patterns.
+	 * Raw LIRC has no padding marker, so retain the OEM ambiguity.
 	 */
-	if ((count > 0) && (txbuf[count-1] == 1))
+	if (txbuf[count - 1] == 1)
 		count--;
-
-	if (count == 0)
-		return 0;
-
-	// pwm_ir.cycle: whole cycle,  pwm_ir.duty_cycle: high period
-	h_l_period = (int)DIV_ROUND_CLOSEST_ULL(IRTX_PWM_CLOCK,
-			pwm_ir->carrier*pwm_ir->cycle);
+	if (!count)
+		return original_count;
 
 	for (i = 0; i < count; i++) {
-		buf_size +=
-		(int)(DIV_ROUND_CLOSEST_ULL((u64)(txbuf[i])*pwm_ir->carrier,
-		(u32)(NSEC_PER_SEC/1000))) * pwm_ir->cycle;
+		u32 n = mtk_pwm_ir_bits(txbuf[i], pwm_ir->carrier);
+
+		if (!n || check_add_overflow(bits, n, &bits) ||
+		    bits > IRTX_MAX_WORDS * 32U)
+			return -EINVAL;
 	}
-
-	buf_size = ALIGN(buf_size, BITS_PER_BYTE * sizeof(unsigned int));
-	/* Calculate total time in us, buf_size is bit size here */
-	total_time = (int)(DIV_ROUND_UP_ULL((u64)(NSEC_PER_SEC/1000)*buf_size,
-				pwm_ir->carrier*pwm_ir->cycle));
-	buf_size = buf_size / BITS_PER_BYTE; /* byte size */
-
-	dma_set_coherent_mask(&pwm_ir->pdev->dev, DMA_BIT_MASK(dma_mask_bit));
-	wave_vir = dma_alloc_coherent(&pwm_ir->pdev->dev, buf_size,
-		&wave_phy, GFP_KERNEL);
+	words = DIV_ROUND_UP(bits, 32U);
+	/*
+	 * Keep the OEM BUF0_SIZE encoding. Reserve an inactive guard word
+	 * too, covering both count and count-minus-one hardware semantics.
+	 */
+	buf_size = (size_t)(words + 1) * sizeof(*wave_vir);
+	/* Wait for the programmed ticks, not the requested carrier rate. */
+	wait_us = DIV_ROUND_UP_ULL((u64)(words + 1) * 32 * ticks *
+				  USEC_PER_SEC, IRTX_PWM_CLOCK);
+	if (wait_us > U32_MAX - 100U)
+		return -EINVAL;
+	total_time = wait_us;
+	wave_vir = dma_alloc_coherent(dev, buf_size, &wave_phy, GFP_KERNEL);
 	if (!wave_vir)
 		return -ENOMEM;
 
-	memset(wave_vir, 0, buf_size);
-	/* convert the pulse/space signal to raw binary signal */
-	cur_bit = 0;
+	memset(wave_vir, pwm_ir->pwm_data_invert ? 0xff : 0, buf_size);
 	for (i = 0; i < count; i++) {
-		unsigned int periods;
-		int j, cur_cycle = 0;
+		u32 n = mtk_pwm_ir_bits(txbuf[i], pwm_ir->carrier);
 
-		periods =
-		(int)(DIV_ROUND_CLOSEST_ULL((u64)(txbuf[i])*pwm_ir->carrier,
-		(u32)(NSEC_PER_SEC/1000))) * pwm_ir->cycle;
-
-		for (j = 0; j < periods; j++) {
-			cur_cycle = (j % pwm_ir->cycle)+1;
-			if (cur_cycle > pwm_ir->duty_cycle  || (i % 2)) {
-				if (pwm_ir->pwm_data_invert)
-					wave_vir[len] |= (1 << cur_bit);
-				else
-					wave_vir[len] &= ~(1 << cur_bit);
-			} else {
-				if (pwm_ir->pwm_data_invert)
-					wave_vir[len] &= ~(1 << cur_bit);
-				else
-					wave_vir[len] |= (1 << cur_bit);
-			}
-			cur_bit++;
-			if (cur_bit == 32) {
-				cur_bit = 0;
-				len++;
-			}
-		}
-	}
-	if (cur_bit > 0)
-		len++;
-
-	irtx_pwm_config.pwm_no = (unsigned int)pwm_ir->pwm_ch;
-	irtx_pwm_config.PWM_MODE_MEMORY_REGS.HDURATION = h_l_period-1;
-	irtx_pwm_config.PWM_MODE_MEMORY_REGS.LDURATION = h_l_period-1;
-	irtx_pwm_config.PWM_MODE_MEMORY_REGS.BUF0_BASE_ADDR = wave_phy;
-	irtx_pwm_config.PWM_MODE_MEMORY_REGS.BUF0_SIZE = len;
-
-#ifdef IRTX_DEBUG
-	dbglog = logbuf;
-	pr_info("h_l_period = %d\n", h_l_period);
-	pr_info("irtx len = %d, buf_size = %d, total_time = %d\n",
-		len, buf_size, total_time);
-	for (i = 0; i < len; i++) {
-		if (i && (i % 16 == 0)) {
-			pr_info("[%d] %s\n", cur_idx++, logbuf);
-			memset(logbuf, 0, sizeof(logbuf));
-			dbglog = logbuf;
-		}
-		dbglog += sprintf(dbglog, "0x%08x ", wave_vir[i]);
-	}
-	if (dbglog != logbuf)
-		pr_info("[%d] %s\n", cur_idx++, logbuf);
-#endif
-
-	if (pwm_ir->regulator != NULL) {
-		if (!regulator_is_enabled(pwm_ir->regulator)) {
-			ret = regulator_enable(pwm_ir->regulator);
-			if (ret < 0) {
-				pr_err("%s:%d regulator_enable fail!\n",
-						__func__, __LINE__);
-				goto exit_free;
-			} else {
-				regulator_enabled = 1;
-			}
+		for (j = 0; j < n; j++, pos++) {
+			if (!(i & 1) && !(j % IRTX_CYCLE))
+				wave_vir[pos / 32] ^= BIT(pos % 32);
 		}
 	}
 
-	ret = pwm_set_spec_config(&irtx_pwm_config);
-	if (ret < 0) {
-		pr_err("pwm_set_spec_config fail, ret: %d\n", ret);
-		goto exit_free;
+	config.pwm_no = pwm_ir->pwm_ch;
+	config.PWM_MODE_MEMORY_REGS.HDURATION = ticks - 1;
+	config.PWM_MODE_MEMORY_REGS.LDURATION = ticks - 1;
+	config.PWM_MODE_MEMORY_REGS.BUF0_BASE_ADDR = wave_phy;
+	config.PWM_MODE_MEMORY_REGS.BUF0_SIZE = words;
+
+	/* Own one enable reference, even if another consumer has it on. */
+	ret = regulator_enable(pwm_ir->regulator);
+	if (ret)
+		goto out_free;
+
+	ret = pwm_set_spec_config(&config);
+	if (!ret)
+		usleep_range(total_time, total_time + 100);
+	/* Also quiesce a partially configured PWM before freeing DMA. */
+	mt_pwm_disable(config.pwm_no, config.pmic_pad);
+	err = regulator_disable(pwm_ir->regulator);
+	if (err) {
+		dev_err(dev, "regulator_disable failed: %d\n", err);
+		if (!ret)
+			ret = err;
 	}
+	if (!ret)
+		ret = original_count;
 
-	usleep_range(total_time, total_time + 100);
-
-	pr_info("[IRTX] done, clean up\n");
-	mt_pwm_disable(irtx_pwm_config.pwm_no, irtx_pwm_config.pmic_pad);
-
-	if (pwm_ir->regulator != NULL) {
-		if (regulator_enabled && regulator_is_enabled(pwm_ir->regulator)) {
-			ret = regulator_disable(pwm_ir->regulator);
-			if (ret < 0) {
-				pr_err("%s:%d regulator_disable fail!\n",
-					__func__, __LINE__);
-				goto exit_free;
-			}
-		}
-	}
-	ret = count;
-
-exit_free:
-	dma_free_coherent(&pwm_ir->pdev->dev, buf_size, wave_vir, wave_phy);
+out_free:
+	dma_free_coherent(dev, buf_size, wave_vir, wave_phy);
 	return ret;
 }
 
@@ -202,24 +175,24 @@ static int mtk_pwm_ir_set_duty_cycle(struct rc_dev *dev, u32 duty_cycle)
 {
 	struct mtk_pwm_ir *pwm_ir = dev->priv;
 
-	if (duty_cycle < 40) {
-		pwm_ir->cycle = 3;
-		pwm_ir->duty_cycle = 1;
-	}
-
-	return 0;
+	/* Only the OEM 1/3 waveform is supported; 33 is the HAL request. */
+	pwm_ir->duty_valid = duty_cycle == 33;
+	return pwm_ir->duty_valid ? 0 : -EINVAL;
 }
 
 static int mtk_pwm_ir_set_carrier(struct rc_dev *dev, u32 carrier)
 {
 	struct mtk_pwm_ir *pwm_ir = dev->priv;
 
-	if (!carrier)
-		return -EINVAL;
+	u32 ticks;
+	int ret;
 
-	pwm_ir->carrier = carrier;
-
-	return 0;
+	ret = mtk_pwm_ir_period(carrier, &ticks);
+	/* The vendor HAL writes even after a failed ioctl: fail closed. */
+	pwm_ir->carrier_valid = !ret;
+	if (!ret)
+		pwm_ir->carrier = carrier;
+	return ret;
 }
 
 static int mtk_pwm_ir_probe(struct platform_device *pdev)
@@ -227,27 +200,38 @@ static int mtk_pwm_ir_probe(struct platform_device *pdev)
 	struct mtk_pwm_ir *pwm_ir;
 	struct rc_dev *rcdev;
 	int rc;
+	u32 dma_mask_bit = 32;
 	const char *pwm_str = NULL;
 
-	pwm_ir = devm_kmalloc(&pdev->dev, sizeof(*pwm_ir), GFP_KERNEL);
+	pwm_ir = devm_kzalloc(&pdev->dev, sizeof(*pwm_ir), GFP_KERNEL);
 	if (!pwm_ir)
 		return -ENOMEM;
 
-	of_property_read_u32(pdev->dev.of_node, "pwm-ch",
-		&pwm_ir->pwm_ch);
+	pwm_ir->carrier = IRTX_DEFAULT_CARRIER;
+	pwm_ir->carrier_valid = true;
+	pwm_ir->duty_valid = true;
+	rc = of_property_read_u32(pdev->dev.of_node, "pwm-ch",
+				  &pwm_ir->pwm_ch);
+	if (rc)
+		return rc;
+	if (pwm_ir->pwm_ch >= PWM_MAX)
+		return -EINVAL;
 	of_property_read_u32(pdev->dev.of_node, "pwm-data-invert",
-		&pwm_ir->pwm_data_invert);
+			     &pwm_ir->pwm_data_invert);
+	if (pwm_ir->pwm_data_invert > 1)
+		return -EINVAL;
 	if (of_property_read_string(pdev->dev.of_node, "pwm-supply",
 		&pwm_str)) {
 		pr_info("Could not get pwm-supply property form dts");
 		return -ENODEV;
 	}
 
-	rc = of_property_read_u32(pdev->dev.of_node, "dma-mask-bit", &dma_mask_bit);
-	if (rc || !dma_mask_bit) {
-		dev_err(&pdev->dev, "rc=%d,dma_mask_bit=%d\n", rc, dma_mask_bit);
-		dma_mask_bit = 32;
-	}
+	of_property_read_u32(pdev->dev.of_node, "dma-mask-bit", &dma_mask_bit);
+	if (!dma_mask_bit || dma_mask_bit > 64)
+		return -EINVAL;
+	rc = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(dma_mask_bit));
+	if (rc)
+		return rc;
 
 	pwm_ir->regulator = devm_regulator_get(&pdev->dev, pwm_str);
 	if (IS_ERR(pwm_ir->regulator))
