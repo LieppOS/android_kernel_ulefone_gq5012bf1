@@ -532,8 +532,9 @@ asks for *host*. Fixed module (9881dfdf0) in vendor_boot_b eabadc0c / vbmeta_b
 ThermoVue dies (stock services.jar did); a services.jar allowlist
 (ro.lieppos.usb_device_allowlist) removes the per-launch USB dialog.
 system_ext_b 56195e1a, system_b 600bf426, vbmeta_system_b 4294e7f5.
-Device tree 147c915. Note: with a PC data cable attached, the camera takes the
-port (adb over USB drops while ThermoVue runs).
+Device tree 147c915. With a PC data cable attached, the camera takes the port
+while ThermoVue runs; on close the driver now gives the PC the device role back
+(c4758bed8; vendor_boot_b bf2cc3b5 / vbmeta_b 20fc9406), so adb returns by itself.
 IR LED: open.
 ## 9. Android Auto, MicroG.
 
