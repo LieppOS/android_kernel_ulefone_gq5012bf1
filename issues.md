@@ -535,6 +535,45 @@ system_ext_b 56195e1a, system_b 600bf426, vbmeta_system_b 4294e7f5.
 Device tree 147c915. With a PC data cable attached, the camera takes the port
 while ThermoVue runs; on close the driver now gives the PC the device role back
 (c4758bed8; vendor_boot_b bf2cc3b5 / vbmeta_b 20fc9406), so adb returns by itself.
-IR LED: open.
+
+### IR transmitter safety fixes deployed (2026-11-02)
+
+Kernel `812888453` fixes initialization, carrier/DMA arithmetic bounds,
+unsupported duty requests, failed-ioctl handling and regulator/PWM cleanup.
+The HAL's 33% request and OEM trailing-1-us padding workaround are retained.
+ARM64 build/modpost, import CRC/KCFI checks and 17,397,470 ASan/UBSan host
+checks passed. The unpatched rebuild matches the live module's text/rodata/data
+and import CRCs; this is not a whole-ELF identity claim.
+
+Owner requested build and flash. Only `/lib/modules/mtk_irtx_pwm.ko` changes in
+the current vendor_dlkm filesystem; file metadata and all other entries match.
+Only the vendor_dlkm descriptor changes in vbmeta, signed with the same existing
+development key. No partition resizing, slot switching or security disabling.
+
+- Written explicitly: `vendor_dlkm_b 7eff220f986d1e00172fb025319d82381669d3dc15cd485011451b76ce1b907b`
+  and `vbmeta_b 64e351e11fd623047d6345fcced3a7f709f58c2c64f72c7a74701347816a2bbb`.
+- Boot verified: slot B, green, enforcing; new module
+  `8f5b2263b424e9779a7bb5a9cd6e469cde44b77bdaea101d1fd0ad38a1e56446`
+  loaded, `/dev/lirc0` registered, Android `consumer_ir` service present.
+- The five checked A partitions (boot, vendor_boot, vendor_dlkm, vbmeta,
+  vbmeta_system) retain their preflight hashes. `boot_b`, `vendor_boot_b` and
+  `vbmeta_system_b` also retain their hashes; SukiSU/display/touchscreen and
+  thermal-camera images are unchanged.
+- No IR signal was sent. Actual optical carrier/duty and TV/AC operation remain
+  untested. Other proc/SCS/tracepoint boot warnings were captured, not silently
+  labelled a warning-free kernel; no IR symbol/version/CFI failure was observed.
+- Exact prior pair is backed up in workspace `build/ir-driver-fix/live/`:
+  vendor_dlkm `a6853c88`, vbmeta `20fc9406`. Package/operation receipts and
+  boot logs are under `build/ir-driver-fix/`. `flash_ir_b.py` provides explicit
+  B-only rollback-logical / rollback-static / verify-rollback commands; reboots
+  to the correct flashing mode are separate steps.
+
+**Research-ready handoff, not yet integrated:** append this deployment result
+to research `hardware/infrared/MT6878-IR-DRIVER-REVIEW.md` (offline report
+`47ddb7b5`) when the research writer is paused. That checkout became active on
+another task again; it was not edited or switched for this deployment. Its
+publication hold remains intact. This source note contains safe deployment
+metadata only, not private raw device evidence.
+
 ## 9. Android Auto, MicroG.
 
