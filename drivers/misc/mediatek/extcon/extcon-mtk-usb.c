@@ -947,22 +947,17 @@ static void yft_tiny2c_mode_work(struct work_struct *work)
 
 	extcon->yft_tiny2c_mode = w->mode;
 
-	/* Mode 1 == camera owns the port: mirror the yft_usb_flag path. */
-	if (w->mode) {
-		if (extcon->uvc_switch_desc)
-			gpiod_set_raw_value(extcon->uvc_switch_desc, 1);
-		if (extcon->uvc_vbus_desc)
-			gpiod_set_raw_value(extcon->uvc_vbus_desc, 1);
-		uvc_insert_status = 1;
-		mtk_usb_extcon_set_vbus(extcon, false);
-		mtk_usb_extcon_set_role(extcon, USB_ROLE_DEVICE);
-	} else {
-		if (extcon->uvc_switch_desc)
-			gpiod_set_raw_value(extcon->uvc_switch_desc, 0);
-		if (extcon->uvc_vbus_desc)
-			gpiod_set_raw_value(extcon->uvc_vbus_desc, 0);
-		uvc_insert_status = 0;
-	}
+	/*
+	 * Stock (oracle disassembly of store_tiny2c_mode): mode 1 queues an
+	 * update_role request with d_role = USB_ROLE_HOST, anything else with
+	 * USB_ROLE_NONE. Nothing else: the uvc switch/vbus GPIOs belong to the
+	 * ID-pin (uSmart accessory) path in mtk_usb_extcon_detect_cable and are
+	 * not touched here. The internal Tiny2-C thermal camera is a UVC device,
+	 * so the controller must be the USB host; requesting DEVICE (as this
+	 * reconstruction first did) leaves it as a gadget and the camera never
+	 * enumerates.
+	 */
+	mtk_usb_extcon_set_role(extcon, w->mode == 1 ? USB_ROLE_HOST : USB_ROLE_NONE);
 
 	kfree(w);
 }
