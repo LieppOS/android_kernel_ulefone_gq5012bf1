@@ -523,6 +523,17 @@ persistent. Flashed `vendor_dlkm_b a6853c88`, `vbmeta_b f72c545d`,
 `system_ext_b f35cc3d9`, `vbmeta_system_b b5884873`.
 Note: rebuilt EROFS images keep fixed file mtimes, so PackageManager reused a
 stale parse of the changed apk until `/data/system/package_cache` was cleared.
-Thermocamera and IR LED: open.
+Thermal camera done (flashed, B only; owner: image works, no dialogs).
+ThermoVue Pro (stock app, 64-bit repack) in system_ext. Root cause of "stuck
+loading": the reconstructed extcon-mtk-usb asked for USB *device* role on
+tiny2c_mode=1 (and toggled the uSmart switch GPIOs = the relay click); stock
+asks for *host*. Fixed module (9881dfdf0) in vendor_boot_b eabadc0c / vbmeta_b
+1c7655f0. Camera enumerates as UVC 3474:4321. ArmorParts powers it off if
+ThermoVue dies (stock services.jar did); a services.jar allowlist
+(ro.lieppos.usb_device_allowlist) removes the per-launch USB dialog.
+system_ext_b 56195e1a, system_b 600bf426, vbmeta_system_b 4294e7f5.
+Device tree 147c915. Note: with a PC data cable attached, the camera takes the
+port (adb over USB drops while ThermoVue runs).
+IR LED: open.
 ## 9. Android Auto, MicroG.
 
