@@ -957,7 +957,19 @@ static void yft_tiny2c_mode_work(struct work_struct *work)
 	 * reconstruction first did) leaves it as a gadget and the camera never
 	 * enumerates.
 	 */
-	mtk_usb_extcon_set_role(extcon, w->mode == 1 ? USB_ROLE_HOST : USB_ROLE_NONE);
+	if (w->mode == 1) {
+		mtk_usb_extcon_set_role(extcon, USB_ROLE_HOST);
+	} else {
+		mtk_usb_extcon_set_role(extcon, USB_ROLE_NONE);
+		/*
+		 * LieppOS: stock stops here, so a PC cable that stayed plugged in
+		 * while the camera held the port got no data role back (no adb/MTP
+		 * until a replug). Give the port back to the PC the same way
+		 * mtk_usb_extcon_psy_detector decides on device mode.
+		 */
+		if (!IS_ERR_OR_NULL(extcon->usb_psy) && usb_is_online(extcon))
+			mtk_usb_extcon_set_role(extcon, USB_ROLE_DEVICE);
+	}
 
 	kfree(w);
 }
